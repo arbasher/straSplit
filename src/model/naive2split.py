@@ -13,14 +13,14 @@ import numpy as np
 from joblib import Parallel, delayed
 from scipy.sparse import lil_matrix
 
-from src.utility.utils import check_type, LabelBinarizer
 from src.utility.file_path import DATASET_PATH
+from src.utility.utils import check_type, LabelBinarizer
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
 
 
-class StratifiedNaiveOnline(object):
+class NaiveStratification(object):
     def __init__(self, shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100, num_jobs: int = 2):
         """Naive online stratified based multi-label data splitting.
 
@@ -69,7 +69,6 @@ class StratifiedNaiveOnline(object):
     def __print_arguments(self, **kwargs):
         desc = "## Split multi-label data using naive stratified approach..."
         print(desc)
-        logger.info(desc)
 
         argdict = dict()
         argdict.update({'shuffle': 'Shuffle the dataset? {0}'.format(self.shuffle)})
@@ -86,7 +85,6 @@ class StratifiedNaiveOnline(object):
         args = [str(item[0] + 1) + '. ' + item[1] for item in zip(list(range(len(args))), args)]
         args = '\n\t\t'.join(args)
         print('\t>> The following arguments are applied:\n\t\t{0}'.format(args), file=sys.stderr)
-        logger.info('\t>> The following arguments are applied:\n\t\t{0}'.format(args))
 
     def __batch_fit(self, examples, check_list):
         """Online or batch based strategy to splitting multi-label dataset
@@ -167,16 +165,18 @@ class StratifiedNaiveOnline(object):
         # examples, breaking ties randomly
         for label_idx in range(num_labels):
             examples = list(X[:, label_idx].nonzero()[0])
+            if len(examples) == 0:
+                continue
             list_batches = np.arange(start=0, stop=len(examples), step=self.batch_size)
             results = parallel(delayed(self.__batch_fit)(examples[batch_idx:batch_idx + self.batch_size],
                                                          check_list)
                                for idx, batch_idx in enumerate(list_batches))
             desc = '\t--> Splitting progress: {0:.2f}%...'.format(((label_idx + 1) / num_labels) * 100)
-
             if label_idx + 1 == num_labels:
                 print(desc)
             else:
                 print(desc, end="\r")
+
             results = list(zip(*results))
             train_list.extend([i for item in results[0] for i in item])
             test_list.extend([i for item in results[1] for i in item])
@@ -192,8 +192,8 @@ if __name__ == "__main__":
         X = pkl.load(f_in)
         X = lil_matrix(X[X.getnnz(axis=1) != 0][:, X.getnnz(axis=0) != 0].A)
 
-    st = StratifiedNaiveOnline(shuffle=True, split_size=0.8, batch_size=1000,
-                               num_jobs=10)
+    st = NaiveStratification(shuffle=True, split_size=0.8, batch_size=1000,
+                             num_jobs=10)
     training_set, test_set = st.fit(X=X)
     training_set, dev_set = st.fit(X=X[training_set])
 

@@ -22,7 +22,7 @@ np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
 
 
-class StratifiedClustering(object):
+class ClusterStratification(object):
     def __init__(self, num_clusters: int = 20, shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100,
                  num_epochs: int = 5, lr: float = 0.0001, num_jobs: int = 2):
 
@@ -300,9 +300,9 @@ if __name__ == "__main__":
     with open(file_path, mode="rb") as f_in:
         y = pkl.load(f_in)
 
-    st = StratifiedClustering(num_clusters=5, shuffle=True, split_size=0.8,
-                              batch_size=100, num_epochs=5, lr=0.0001,
-                              num_jobs=2)
+    st = ClusterStratification(num_clusters=5, shuffle=True, split_size=0.8,
+                               batch_size=100, num_epochs=5, lr=0.0001,
+                               num_jobs=2)
     training_set, test_set = st.fit(X=X, y=y)
     training_set, dev_set = st.fit(X=X[training_set], y=y[training_set])
 

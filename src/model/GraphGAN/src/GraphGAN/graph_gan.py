@@ -10,8 +10,8 @@ import tqdm
 import config
 import discriminator
 import generator
-from src.others.GraphGAN.src import utils
-from src.others.GraphGAN.src.evaluation import link_prediction as lp
+from src.model.GraphGAN.src import utils
+from src.model.GraphGAN.src.evaluation import link_prediction as lp
 
 tf.compat.v1.disable_eager_execution()
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'

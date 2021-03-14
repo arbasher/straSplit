@@ -1,24 +1,6 @@
 import os
 import pickle as pkl
 
-import numpy as np
-import scipy as sp
-
-
-def check_type(y):
-    checked = False
-    if isinstance(y, sp.sparse.bsr_matrix):
-        checked = True
-    elif isinstance(y, sp.sparse.csc_matrix):
-        checked = True
-    elif isinstance(y, sp.sparse.csr_matrix):
-        checked = True
-    elif isinstance(y, sp.sparse.lil_matrix):
-        checked = True
-    elif isinstance(y, np.ndarray):
-        checked = True
-    return checked
-
 
 def entropy_stratification(X, y, split_size: float = 0.75):
     pass

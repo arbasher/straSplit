@@ -22,7 +22,7 @@ np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
 
 
-class StratifiedCommunity(object):
+class CommunityStratification(object):
     def __init__(self, num_subsamples: int = 10000, num_clusters: int = 5, sigma: float = 2, shuffle: bool = True,
                  split_size: float = 0.75, batch_size: int = 100, num_epochs: int = 50, num_jobs: int = 2):
         """Community based stratified based multi-label data splitting.
@@ -292,9 +292,9 @@ if __name__ == "__main__":
         X = pkl.load(f_in)
         X = lil_matrix(X[X.getnnz(axis=1) != 0][:, X.getnnz(axis=0) != 0].A)
 
-    st = StratifiedCommunity(num_subsamples=10000, num_clusters=5, sigma=2,
-                             shuffle=True, split_size=0.8, batch_size=100,
-                             num_jobs=10)
+    st = CommunityStratification(num_subsamples=10000, num_clusters=5, sigma=2,
+                                 shuffle=True, split_size=0.8, batch_size=100,
+                                 num_jobs=10)
     training_set, test_set = st.fit(X=X)
     training_set, dev_set = st.fit(X=X[training_set])
 

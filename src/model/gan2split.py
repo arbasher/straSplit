@@ -3,6 +3,7 @@ Generate synthetic multi-label samples using GAN while
 performing stratified data splitting
 '''
 
+import collections
 import os
 import pickle as pkl
 import random
@@ -12,12 +13,15 @@ import warnings
 
 import numpy as np
 import tensorflow as tf
+import tqdm
 from joblib import Parallel, delayed
+from scipy import linalg, sparse
 from scipy.cluster.vq import kmeans2
 from scipy.sparse import lil_matrix
 from sklearn.cross_decomposition import PLSSVD
 
 import config
+from src.model.emb import Embedding
 from src.utility.file_path import DATASET_PATH
 from src.utility.utils import check_type, LabelBinarizer
 
@@ -92,8 +96,9 @@ class Discriminator(object):
         self.reward = tf.compat.v1.log(1 + tf.compat.v1.exp(self.score))
 
 
-class StratifiedGAN(object):
-    def __init__(self, num_clusters: int = 20, shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100,
+class GANStratification(object):
+    def __init__(self, num_subsamples: int = 10000, num_clusters: int = 5, sigma: float = 2, shuffle: bool = True,
+                 split_size: float = 0.75, batch_size: int = 100,
                  num_epochs: int = 5, lr: float = 0.0001, num_jobs: int = 2):
 
         """Clustering based stratified based multi-label data splitting.
@@ -126,9 +131,17 @@ class StratifiedGAN(object):
             ``-1`` means using all processors.
         """
 
+        if num_subsamples < 100:
+            num_subsamples = 100
+        self.num_subsamples = num_subsamples
+
         if num_clusters < 1:
-            num_clusters = 20
+            num_clusters = 5
         self.num_clusters = num_clusters
+
+        if sigma < 0.0:
+            sigma = 2
+        self.sigma = sigma
 
         self.shuffle = shuffle
 
@@ -213,6 +226,63 @@ class StratifiedGAN(object):
         optimal_init = 1.0 / (initial_eta0 * alpha)
         return optimal_init
 
+    def __normalize_laplacian(self, A, return_adj=False, norm_adj=False):
+        """Normalize graph Laplacian matrix.
+
+        Parameters
+        ----------
+        A : {array-like, sparse matrix} of shape (n_labels, n_labels)
+            Matrix `A`.
+
+        return_adj : bool, default=False
+            Whether or not to return adjacency matrix or normalized Laplacian matrix.
+
+        norm_adj : bool, default=False
+            Whether or not to normalize adjacency matrix.
+
+        Returns
+        -------
+        clusters labels : a list of clusters defining a cluster to a label association
+        """
+
+        def __scale_diagonal(D):
+            D = D.sqrt()
+            D = D.power(-1)
+            return D
+
+        A.setdiag(values=0)
+        D = lil_matrix(A.sum(axis=1))
+        D = D.multiply(sparse.eye(D.shape[0]))
+        if return_adj:
+            if norm_adj:
+                D_inv = D.power(-0.5)
+                A = D_inv.dot(A).dot(D_inv)
+            return A
+        else:
+            L = D - A
+            D = __scale_diagonal(D=D) / self.sigma
+            return D.dot(L.dot(D))
+
+    def __graph_construction(self, X):
+        """Clustering labels after constructing graph adjacency matrix empirically.
+
+        Parameters
+        ----------
+        X : {array-like, sparse matrix} of shape (n_samples, n_labels)
+            Matrix `X`.
+
+        Returns
+        -------
+        clusters labels : a list of clusters defining a cluster to a label association
+        """
+
+        A = X.T.dot(X)
+        A = self.__normalize_laplacian(A=A, return_adj=False, norm_adj=False)
+        _, V = linalg.eigh(A.toarray())
+        V = V[:, -self.num_clusters:]
+        centroid, label = kmeans2(data=V, k=self.num_clusters, iter=self.num_epochs, minit='++')
+        return centroid, label
+
     def __batch_fit(self, examples, check_list):
         """Online or batch based strategy to splitting multi-label dataset
         into train and test subsets.
@@ -252,6 +322,45 @@ class StratifiedGAN(object):
                 temp_dict.update({0: temp})
         return sorted(temp_dict[0]), sorted(temp_dict[1])
 
+    def __build_trees(self, nodes, graph=None):
+        """use BFS algorithm to construct the BFS-trees
+
+        Args:
+            graph:
+            nodes: the list of nodes in the graph
+        Returns:
+            trees: dict, root_node_id -> tree, where tree is a dict: node_id -> list: [father, child_0, child_1, ...]
+        """
+
+        trees = {}
+        for root in tqdm.tqdm(nodes):
+            trees[root] = {}
+            trees[root][root] = [root]
+            used_nodes = set()
+            queue = collections.deque([root])
+            while len(queue) > 0:
+                cur_node = queue.popleft()
+                used_nodes.add(cur_node)
+                for sub_node in graph[cur_node]:
+                    if sub_node not in used_nodes:
+                        trees[root][cur_node].append(sub_node)
+                        trees[root][sub_node] = [cur_node]
+                        queue.append(sub_node)
+                        used_nodes.add(sub_node)
+        return trees
+
+    def build_generator(self):
+        """initializing the generator"""
+
+        with tf.compat.v1.variable_scope("generator"):
+            self.generator = Generator(n_node=self.n_node, node_emd_init=self.node_embed_init_g)
+
+    def build_discriminator(self):
+        """initializing the discriminator"""
+
+        with tf.compat.v1.variable_scope("discriminator"):
+            self.discriminator = Discriminator(n_node=self.n_node, node_emd_init=self.node_embed_init_d)
+
     def fit(self, X, y):
         """Split multi-label y dataset into train and test subsets.
 
@@ -281,6 +390,44 @@ class StratifiedGAN(object):
             classes = list(set([i[0] if i else 0 for i in X.data]))
             mlb = LabelBinarizer(labels=classes)
             X = mlb.transform(X)
+            num_labels = len(classes)
+
+        if not self.is_fit:
+            desc = '\t>> Building Graph...'
+            print(desc)
+            # Construct graph
+            idx = np.random.choice(a=list(range(num_examples)), size=self.num_subsamples, replace=True)
+            A = y[idx].T.dot(y[idx])
+            A = self.__normalize_laplacian(A=A, return_adj=True, norm_adj=True)
+            A[A <= 0.05] = 0.0
+            A = lil_matrix(A)
+            graph = {i: list(A[i].nonzero()[1]) for i in range(A.shape[0])}
+            # construct or read BFS-trees
+            root_nodes = [i for i in range(num_labels)]
+            trees = self.__build_trees(root_nodes, graph=graph)
+
+        emb_X = Embedding(size=num_examples, dimension=50, use_truncated_normal=True)
+        emb_X = emb_X.embeddings
+        emb_y = Embedding(size=num_labels, dimension=50, use_truncated_normal=True)
+        emb_y = emb_y.embeddings
+
+        # store embeddings as string in .txt file
+
+        print("building GAN model...")
+        self.discriminator = None
+        self.generator = None
+        self.build_generator()
+        self.build_discriminator()
+
+        self.latest_checkpoint = tf.compat.v1.train.latest_checkpoint(config.model_log)
+        self.saver = tf.compat.v1.train.Saver()
+
+        self.config = tf.compat.v1.ConfigProto()
+        self.config.gpu_options.allow_growth = True
+        self.init_op = tf.compat.v1.group(tf.compat.v1.global_variables_initializer(),
+                                          tf.compat.v1.local_variables_initializer())
+        self.sess = tf.compat.v1.Session(config=self.config)
+        self.sess.run(self.init_op)
 
         # 1)- Compute covariance of X and y using SVD
         if not self.is_fit:
@@ -366,13 +513,13 @@ if __name__ == "__main__":
     with open(file_path, mode="rb") as f_in:
         X = pkl.load(f_in)
 
-    file_path = os.path.join(DATASET_PATH, X_name)
+    file_path = os.path.join(DATASET_PATH, y_name)
     with open(file_path, mode="rb") as f_in:
         y = pkl.load(f_in)
 
-    st = StratifiedGAN(num_clusters=5, shuffle=True, split_size=0.8,
-                       batch_size=100, num_epochs=5, lr=0.0001,
-                       num_jobs=2)
+    st = GANStratification(num_clusters=5, shuffle=True, split_size=0.8,
+                           batch_size=100, num_epochs=5, lr=0.0001,
+                           num_jobs=2)
     training_set, test_set = st.fit(X=X, y=y)
     training_set, dev_set = st.fit(X=X[training_set], y=y[training_set])
 
