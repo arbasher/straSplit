@@ -1,11 +1,5 @@
-import os
-
 import numpy as np
 import scipy as sp
-
-DIRECTORY_PATH = os.getcwd()
-DIRECTORY_PATH = DIRECTORY_PATH.split(os.sep)
-DIRECTORY_PATH = os.sep.join(DIRECTORY_PATH[:-3])
 
 
 def check_type(X):

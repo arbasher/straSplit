@@ -11,23 +11,88 @@ import time
 import warnings
 
 import numpy as np
+import tensorflow as tf
 from joblib import Parallel, delayed
 from scipy.cluster.vq import kmeans2
 from scipy.sparse import lil_matrix
 from sklearn.cross_decomposition import PLSSVD
-import argparse
 
-import numpy as np
-import tensorflow as tf
-from tensorflow.contrib.layers import batch_norm
-from tensorflow.contrib.layers import l2_regularizer
-from src.split_data.utility import DIRECTORY_PATH, check_type, LabelBinarizer
+import config
+from src.utility.file_path import DATASET_PATH
+from src.utility.utils import check_type, LabelBinarizer
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
 
 
-class GAN2SYN(object):
+class Generator(object):
+    def __init__(self, n_node, node_emd_init):
+        self.n_node = n_node
+        self.node_emd_init = node_emd_init
+
+        with tf.compat.v1.variable_scope('generator'):
+            self.embedding_matrix = tf.compat.v1.get_variable(name="embedding",
+                                                              shape=self.node_emd_init.shape,
+                                                              initializer=tf.compat.v1.constant_initializer(
+                                                                  self.node_emd_init),
+                                                              trainable=True)
+            self.bias_vector = tf.compat.v1.Variable(tf.compat.v1.zeros([self.n_node]))
+
+        self.node_id = tf.compat.v1.placeholder(tf.int32, shape=[None])
+        self.node_neighbor_id = tf.compat.v1.placeholder(tf.int32, shape=[None])
+        self.reward = tf.compat.v1.placeholder(tf.float32, shape=[None])
+
+        self.all_score = tf.compat.v1.matmul(self.embedding_matrix, self.embedding_matrix,
+                                             transpose_b=True) + self.bias_vector
+        self.node_embedding = tf.compat.v1.nn.embedding_lookup(self.embedding_matrix,
+                                                               self.node_id)  # batch_size * n_embed
+        self.node_neighbor_embedding = tf.compat.v1.nn.embedding_lookup(self.embedding_matrix, self.node_neighbor_id)
+        self.bias = tf.compat.v1.gather(self.bias_vector, self.node_neighbor_id)
+        self.score = tf.compat.v1.reduce_sum(self.node_embedding * self.node_neighbor_embedding, axis=1) + self.bias
+        self.prob = tf.compat.v1.clip_by_value(tf.compat.v1.nn.sigmoid(self.score), 1e-5, 1)
+
+        self.loss = -tf.compat.v1.reduce_mean(tf.compat.v1.log(self.prob) * self.reward) + config.lambda_gen * (
+                tf.compat.v1.nn.l2_loss(self.node_neighbor_embedding) + tf.compat.v1.nn.l2_loss(self.node_embedding))
+        optimizer = tf.compat.v1.train.AdamOptimizer(config.lr_gen)
+        self.g_updates = optimizer.minimize(self.loss)
+
+
+class Discriminator(object):
+    def __init__(self, n_node, node_emd_init):
+        self.n_node = n_node
+        self.node_emd_init = node_emd_init
+
+        with tf.compat.v1.variable_scope('discriminator'):
+            self.embedding_matrix = tf.compat.v1.get_variable(name="embedding",
+                                                              shape=self.node_emd_init.shape,
+                                                              initializer=tf.compat.v1.constant_initializer(
+                                                                  self.node_emd_init),
+                                                              trainable=True)
+            self.bias_vector = tf.compat.v1.Variable(tf.compat.v1.zeros([self.n_node]))
+
+        self.node_id = tf.compat.v1.placeholder(tf.int32, shape=[None])
+        self.node_neighbor_id = tf.compat.v1.placeholder(tf.int32, shape=[None])
+        self.label = tf.compat.v1.placeholder(tf.float32, shape=[None])
+
+        self.node_embedding = tf.compat.v1.nn.embedding_lookup(self.embedding_matrix, self.node_id)
+        self.node_neighbor_embedding = tf.compat.v1.nn.embedding_lookup(self.embedding_matrix, self.node_neighbor_id)
+        self.bias = tf.compat.v1.gather(self.bias_vector, self.node_neighbor_id)
+        self.score = tf.compat.v1.reduce_sum(tf.compat.v1.multiply(self.node_embedding, self.node_neighbor_embedding),
+                                             axis=1) + self.bias
+
+        self.loss = tf.compat.v1.reduce_sum(
+            tf.compat.v1.nn.sigmoid_cross_entropy_with_logits(labels=self.label,
+                                                              logits=self.score)) + config.lambda_dis * (
+                            tf.compat.v1.nn.l2_loss(self.node_neighbor_embedding) +
+                            tf.compat.v1.nn.l2_loss(self.node_embedding) +
+                            tf.compat.v1.nn.l2_loss(self.bias))
+        optimizer = tf.compat.v1.train.AdamOptimizer(config.lr_dis)
+        self.d_updates = optimizer.minimize(self.loss)
+        self.score = tf.compat.v1.clip_by_value(self.score, clip_value_min=-10, clip_value_max=10)
+        self.reward = tf.compat.v1.log(1 + tf.compat.v1.exp(self.score))
+
+
+class StratifiedGAN(object):
     def __init__(self, num_clusters: int = 20, shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100,
                  num_epochs: int = 5, lr: float = 0.0001, num_jobs: int = 2):
 
@@ -294,21 +359,20 @@ class GAN2SYN(object):
 
 
 if __name__ == "__main__":
-    log_path = os.path.join(DIRECTORY_PATH, 'log')
-
     X_name = "Xbirds_train.pkl"
     y_name = "ybirds_train.pkl"
 
-    file_path = os.path.join(DIRECTORY_PATH, 'data', X_name)
+    file_path = os.path.join(DATASET_PATH, X_name)
     with open(file_path, mode="rb") as f_in:
         X = pkl.load(f_in)
 
-    file_path = os.path.join(DIRECTORY_PATH, 'data', y_name)
+    file_path = os.path.join(DATASET_PATH, X_name)
     with open(file_path, mode="rb") as f_in:
         y = pkl.load(f_in)
 
-    st = StratifiedClustering(num_clusters=5, shuffle=True, split_size=0.8, batch_size=100, num_epochs=5, lr=0.0001,
-                              num_jobs=2)
+    st = StratifiedGAN(num_clusters=5, shuffle=True, split_size=0.8,
+                       batch_size=100, num_epochs=5, lr=0.0001,
+                       num_jobs=2)
     training_set, test_set = st.fit(X=X, y=y)
     training_set, dev_set = st.fit(X=X[training_set], y=y[training_set])
 

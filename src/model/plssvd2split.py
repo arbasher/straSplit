@@ -15,7 +15,8 @@ from scipy.cluster.vq import kmeans2
 from scipy.sparse import lil_matrix
 from sklearn.cross_decomposition import PLSSVD
 
-from src.split_data.utility import DIRECTORY_PATH, check_type, LabelBinarizer
+from src.utility.file_path import DATASET_PATH
+from src.utility.utils import check_type, LabelBinarizer
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
@@ -213,7 +214,7 @@ class StratifiedClustering(object):
 
         # 1)- Compute covariance of X and y using SVD
         if not self.is_fit:
-            plsca = PLSSVD(n_components=self.num_clusters, scale=True, copy=False)
+            model = PLSSVD(n_components=self.num_clusters, scale=True, copy=False)
             lam_reg = 0.5
             mu_reg = 0.5
             optimal_init = self.__optimal_learning_rate(alpha=self.lr)
@@ -228,15 +229,15 @@ class StratifiedClustering(object):
                         print(desc)
                     else:
                         print(desc, end="\r")
-                    plsca.fit(X[batch_idx:batch_idx + self.batch_size].toarray(),
+                    model.fit(X[batch_idx:batch_idx + self.batch_size].toarray(),
                               y[batch_idx:batch_idx + self.batch_size].toarray())
-                    U = plsca.x_weights_
+                    U = model.x_weights_
                     learning_rate = 1.0 / (self.lr * (optimal_init + epoch - 1))
                     U = U + learning_rate * (lam_reg * 2 * U)
                     U = U + learning_rate * (mu_reg * np.sign(U))
-                    plsca.x_weights_ = U
-            self.U = lil_matrix(plsca.x_weights_)
-            del U, plsca
+                    model.x_weights_ = U
+            self.U = lil_matrix(model.x_weights_)
+            del U, model
 
         # 2)- Project X onto a low dimension via U orthonormal basis obtained from SVD
         #     using SVD
@@ -288,20 +289,19 @@ class StratifiedClustering(object):
 
 
 if __name__ == "__main__":
-    log_path = os.path.join(DIRECTORY_PATH, 'log')
-
     X_name = "Xbirds_train.pkl"
     y_name = "ybirds_train.pkl"
 
-    file_path = os.path.join(DIRECTORY_PATH, 'data', X_name)
+    file_path = os.path.join(DATASET_PATH, X_name)
     with open(file_path, mode="rb") as f_in:
         X = pkl.load(f_in)
 
-    file_path = os.path.join(DIRECTORY_PATH, 'data', y_name)
+    file_path = os.path.join(DATASET_PATH, X_name)
     with open(file_path, mode="rb") as f_in:
         y = pkl.load(f_in)
 
-    st = StratifiedClustering(num_clusters=5, shuffle=True, split_size=0.8, batch_size=100, num_epochs=5, lr=0.0001,
+    st = StratifiedClustering(num_clusters=5, shuffle=True, split_size=0.8,
+                              batch_size=100, num_epochs=5, lr=0.0001,
                               num_jobs=2)
     training_set, test_set = st.fit(X=X, y=y)
     training_set, dev_set = st.fit(X=X[training_set], y=y[training_set])
