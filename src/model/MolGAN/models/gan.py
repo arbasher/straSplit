@@ -42,16 +42,16 @@ class GraphGANModel(object):
                 (self.edges_logits, self.nodes_logits), temperature=self.temperature)
 
             self.edges_hat = tf.compat.v1.case({self.soft_gumbel_softmax: lambda: self.edges_gumbel_softmax,
-                                      self.hard_gumbel_softmax: lambda: tf.compat.v1.stop_gradient(
-                                          self.edges_gumbel_argmax - self.edges_gumbel_softmax) + self.edges_gumbel_softmax},
-                                     default=lambda: self.edges_softmax,
-                                     exclusive=True)
+                                                self.hard_gumbel_softmax: lambda: tf.compat.v1.stop_gradient(
+                                                    self.edges_gumbel_argmax - self.edges_gumbel_softmax) + self.edges_gumbel_softmax},
+                                               default=lambda: self.edges_softmax,
+                                               exclusive=True)
 
             self.nodes_hat = tf.compat.v1.case({self.soft_gumbel_softmax: lambda: self.nodes_gumbel_softmax,
-                                      self.hard_gumbel_softmax: lambda: tf.compat.v1.stop_gradient(
-                                          self.nodes_gumbel_argmax - self.nodes_gumbel_softmax) + self.nodes_gumbel_softmax},
-                                     default=lambda: self.nodes_softmax,
-                                     exclusive=True)
+                                                self.hard_gumbel_softmax: lambda: tf.compat.v1.stop_gradient(
+                                                    self.nodes_gumbel_argmax - self.nodes_gumbel_softmax) + self.nodes_gumbel_softmax},
+                                               default=lambda: self.nodes_softmax,
+                                               exclusive=True)
 
         with tf.compat.v1.name_scope('D_x_real'):
             self.logits_real, self.features_real = self.D_x((self.adjacency_tensor, None, self.node_tensor),
@@ -71,13 +71,15 @@ class GraphGANModel(object):
             outputs0 = self.discriminator(inputs, units=units[:-1], training=self.training,
                                           dropout_rate=self.dropout_rate)
 
-            outputs1 = multi_dense_layers(outputs0, units=units[-1], activation=tf.compat.v1.nn.tanh, training=self.training,
+            outputs1 = multi_dense_layers(outputs0, units=units[-1], activation=tf.compat.v1.nn.tanh,
+                                          training=self.training,
                                           dropout_rate=self.dropout_rate)
 
             if self.batch_discriminator:
                 outputs_batch = tf.compat.v1.layers.dense(outputs0, units[-2] // 8, activation=tf.compat.v1.tanh)
-                outputs_batch = tf.compat.v1.layers.dense(tf.compat.v1.reduce_mean(outputs_batch, 0, keep_dims=True), units[-2] // 8,
-                                                activation=tf.compat.v1.nn.tanh)
+                outputs_batch = tf.compat.v1.layers.dense(tf.compat.v1.reduce_mean(outputs_batch, 0, keep_dims=True),
+                                                          units[-2] // 8,
+                                                          activation=tf.compat.v1.nn.tanh)
                 outputs_batch = tf.compat.v1.tile(outputs_batch, (tf.compat.v1.shape(outputs0)[0], 1))
 
                 outputs1 = tf.compat.v1.concat((outputs1, outputs_batch), -1)
@@ -91,7 +93,8 @@ class GraphGANModel(object):
             outputs = self.discriminator(inputs, units=units[:-1], training=self.training,
                                          dropout_rate=self.dropout_rate)
 
-            outputs = multi_dense_layers(outputs, units=units[-1], activation=tf.compat.v1.nn.tanh, training=self.training,
+            outputs = multi_dense_layers(outputs, units=units[-1], activation=tf.compat.v1.nn.tanh,
+                                         training=self.training,
                                          dropout_rate=self.dropout_rate)
 
             outputs = tf.compat.v1.layers.dense(outputs, units=1, activation=tf.compat.v1.nn.sigmoid)

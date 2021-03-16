@@ -1,8 +1,8 @@
 import numpy as np
 import tensorflow as tf
 
-from models import postprocess_logits
-from utils.layers import multi_dense_layers
+from src.model.MolGAN.models import postprocess_logits
+from src.model.MolGAN.utils.layers import multi_dense_layers
 
 
 class GraphVAEModel:
@@ -40,20 +40,21 @@ class GraphVAEModel:
             self.q_z = tf.distributions.Normal(self.embeddings_mean, self.embeddings_std)
 
             self.embeddings = tf.cond(self.variational,
-                                      lambda: self.q_z.sample(),
-                                      lambda: self.embeddings_mean)
+                                      lambda: self.q_z.__sample(,,
+                              lambda: self.embeddings_mean)
 
-        with tf.variable_scope('decoder'):
-            self.edges_logits, self.nodes_logits = self.decoder(self.embeddings, decoder_units, vertexes, edges, nodes,
-                                                                training=self.training, dropout_rate=0.)
+            with tf.variable_scope('decoder'):
+                self.edges_logits, self.nodes_logits = self.decoder(self.embeddings, decoder_units, vertexes, edges,
+                                                                    nodes,
+                                                                    training=self.training, dropout_rate=0.)
 
-        with tf.name_scope('outputs'):
-            (self.edges_softmax, self.nodes_softmax), \
-            (self.edges_argmax, self.nodes_argmax), \
-            (self.edges_gumbel_logits, self.nodes_gumbel_logits), \
-            (self.edges_gumbel_softmax, self.nodes_gumbel_softmax), \
-            (self.edges_gumbel_argmax, self.nodes_gumbel_argmax) = postprocess_logits(
-                (self.edges_logits, self.nodes_logits), temperature=self.temperature)
+            with tf.name_scope('outputs'):
+                (self.edges_softmax, self.nodes_softmax), \
+                (self.edges_argmax, self.nodes_argmax), \
+                (self.edges_gumbel_logits, self.nodes_gumbel_logits), \
+                (self.edges_gumbel_softmax, self.nodes_gumbel_softmax), \
+                (self.edges_gumbel_argmax, self.nodes_gumbel_argmax) = postprocess_logits(
+                    (self.edges_logits, self.nodes_logits), temperature=self.temperature)
 
             self.edges_hat = tf.case({self.soft_gumbel_softmax: lambda: self.edges_gumbel_softmax,
                                       self.hard_gumbel_softmax: lambda: tf.stop_gradient(
@@ -67,10 +68,10 @@ class GraphVAEModel:
                                      default=lambda: self.nodes_softmax,
                                      exclusive=True)
 
-        with tf.name_scope('V_x_real'):
-            self.value_logits_real = self.V_x((self.adjacency_tensor, None, self.node_tensor), units=encoder_units)
-        with tf.name_scope('V_x_fake'):
-            self.value_logits_fake = self.V_x((self.edges_hat, None, self.nodes_hat), units=encoder_units)
+            with tf.name_scope('V_x_real'):
+                self.value_logits_real = self.V_x((self.adjacency_tensor, None, self.node_tensor), units=encoder_units)
+            with tf.name_scope('V_x_fake'):
+                self.value_logits_fake = self.V_x((self.edges_hat, None, self.nodes_hat), units=encoder_units)
 
     def V_x(self, inputs, units):
         with tf.variable_scope('value', reuse=tf.AUTO_REUSE):

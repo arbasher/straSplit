@@ -18,6 +18,12 @@ def check_type(X):
     return checked, X
 
 
+def softmax(x):
+    e_x = np.exp(x - np.max(x))  # for computation stability
+    temp = e_x / e_x.sum()
+    return temp.tolist()
+
+
 class LabelBinarizer(object):
     def __init__(self, labels):
         if not isinstance(labels, list):

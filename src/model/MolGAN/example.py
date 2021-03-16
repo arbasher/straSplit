@@ -197,16 +197,4 @@ trainer = Trainer(model, optimizer, session)
 
 print('Parameters: {}'.format(np.sum([np.prod(e.shape) for e in session.run(tf.trainable_variables())])))
 
-trainer.train(batch_dim=batch_dim,
-              epochs=epochs,
-              steps=steps,
-              train_fetch_dict=train_fetch_dict,
-              train_feed_dict=train_feed_dict,
-              eval_fetch_dict=eval_fetch_dict,
-              eval_feed_dict=eval_feed_dict,
-              test_fetch_dict=test_fetch_dict,
-              test_feed_dict=test_feed_dict,
-              save_every=save_every,
-              directory='/',
-              _eval_update=_eval_update,
-              _test_update=_test_update)
+trainer.__train_gan(0, 0,,, , , , , ,

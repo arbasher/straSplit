@@ -86,7 +86,7 @@ class NaiveStratification(object):
         args = '\n\t\t'.join(args)
         print('\t>> The following arguments are applied:\n\t\t{0}'.format(args), file=sys.stderr)
 
-    def __batch_fit(self, examples, check_list):
+    def __parallel_split(self, examples, check_list):
         """Online or batch based strategy to splitting multi-label dataset
         into train and test subsets.
 
@@ -168,8 +168,8 @@ class NaiveStratification(object):
             if len(examples) == 0:
                 continue
             list_batches = np.arange(start=0, stop=len(examples), step=self.batch_size)
-            results = parallel(delayed(self.__batch_fit)(examples[batch_idx:batch_idx + self.batch_size],
-                                                         check_list)
+            results = parallel(delayed(self.__parallel_split)(examples[batch_idx:batch_idx + self.batch_size],
+                                                              check_list)
                                for idx, batch_idx in enumerate(list_batches))
             desc = '\t--> Splitting progress: {0:.2f}%...'.format(((label_idx + 1) / num_labels) * 100)
             if label_idx + 1 == num_labels:

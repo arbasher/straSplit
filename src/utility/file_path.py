@@ -6,3 +6,4 @@ REPO_PATH = os.sep.join(REPO_PATH[:-3])
 
 DATASET_PATH = os.path.join(REPO_PATH, 'data')
 RESULT_PATH = os.path.join(REPO_PATH, 'result')
+LOG_PATH = os.path.join(REPO_PATH, 'log')

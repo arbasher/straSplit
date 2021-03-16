@@ -178,7 +178,7 @@ class CommunityStratification(object):
         centroid, label = kmeans2(data=V, k=self.num_clusters, iter=self.num_epochs, minit='++')
         return centroid, label
 
-    def __batch_fit(self, examples, check_list):
+    def __parallel_split(self, examples, check_list):
         """Online or batch based strategy to splitting multi-label dataset
         into train and test subsets.
 
@@ -268,8 +268,8 @@ class CommunityStratification(object):
             if len(examples) == 0:
                 continue
             list_batches = np.arange(start=0, stop=len(examples), step=self.batch_size)
-            results = parallel(delayed(self.__batch_fit)(examples[batch_idx:batch_idx + self.batch_size],
-                                                         check_list)
+            results = parallel(delayed(self.__parallel_split)(examples[batch_idx:batch_idx + self.batch_size],
+                                                              check_list)
                                for idx, batch_idx in enumerate(list_batches))
             desc = '\t\t--> Splitting progress: {0:.2f}%...'.format(((label_idx + 1) / num_labels) * 100)
             if label_idx + 1 == num_labels:

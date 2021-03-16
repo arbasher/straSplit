@@ -143,7 +143,7 @@ class ClusterStratification(object):
         optimal_init = 1.0 / (initial_eta0 * alpha)
         return optimal_init
 
-    def __batch_fit(self, examples, check_list):
+    def __parallel_split(self, examples, check_list):
         """Online or batch based strategy to splitting multi-label dataset
         into train and test subsets.
 
@@ -271,8 +271,8 @@ class ClusterStratification(object):
             if len(examples) == 0:
                 continue
             list_batches = np.arange(start=0, stop=len(examples), step=self.batch_size)
-            results = parallel(delayed(self.__batch_fit)(examples[batch_idx:batch_idx + self.batch_size],
-                                                         check_list)
+            results = parallel(delayed(self.__parallel_split)(examples[batch_idx:batch_idx + self.batch_size],
+                                                              check_list)
                                for idx, batch_idx in enumerate(list_batches))
             desc = '\t\t--> Splitting progress: {0:.2f}%...'.format(((label_idx + 1) / num_labels) * 100)
             if label_idx + 1 == num_labels:
@@ -290,15 +290,18 @@ class ClusterStratification(object):
 
 if __name__ == "__main__":
     X_name = "Xbirds_train.pkl"
-    y_name = "ybirds_train.pkl"
+    y_name = "Ybirds_train.pkl"
+
+    file_path = os.path.join(DATASET_PATH, y_name)
+    with open(file_path, mode="rb") as f_in:
+        y = pkl.load(f_in)
+        idx = list(set(y.nonzero()[0]))
+        y = y[idx]
 
     file_path = os.path.join(DATASET_PATH, X_name)
     with open(file_path, mode="rb") as f_in:
         X = pkl.load(f_in)
-
-    file_path = os.path.join(DATASET_PATH, X_name)
-    with open(file_path, mode="rb") as f_in:
-        y = pkl.load(f_in)
+        X = X[idx]
 
     st = ClusterStratification(num_clusters=5, shuffle=True, split_size=0.8,
                                batch_size=100, num_epochs=5, lr=0.0001,
