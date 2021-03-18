@@ -76,14 +76,14 @@ class GANStratification(object):
         window_size = 2
         """
 
-        self.num_examples2gen = 20,
-        self.lambda_dis = 1e-5
-        self.lambda_gen = 1e-5
-        self.update_ratio = 1
-        self.max_iter_gen = 30,
-        self.max_iter_dis = 30
-        self.window_size = 2
-        self.display_interval = 30
+        self.num_examples2gen = num_examples2gen
+        self.lambda_dis = lambda_dis
+        self.lambda_gen = lambda_gen
+        self.update_ratio = update_ratio
+        self.max_iter_gen = max_iter_gen
+        self.max_iter_dis = max_iter_dis
+        self.window_size = window_size
+        self.display_interval = display_interval
 
         if dimension_size < 2:
             dimension_size = 50
@@ -209,7 +209,7 @@ class GANStratification(object):
         data partition : two lists of the resulted split data
         """
 
-        temp_dict = dict({0: [], 1: []})
+        temp_dict = dict({0: list(), 1: list()})
         examples_batch = [i for i in examples if i not in check_list]
         if self.shuffle:
             random.shuffle(examples_batch)
@@ -283,25 +283,25 @@ class GANStratification(object):
         model = tf.keras.Model(inputs=[input_layer], outputs=[relu], name=name)
         return model
 
-    def __discriminator_loss(self, model, node_id, node_neighbor_id, label=None, calc_reward=False):
+    def __discriminator_loss(self, model, node_id, node_neighbor_id, label=None, calc_score=False):
         node_embedding = tf.nn.embedding_lookup(model.layers[1].embeddings, node_id)
         node_neighbor_embedding = tf.nn.embedding_lookup(model.layers[1].embeddings, node_neighbor_id)
 
         bias = tf.nn.embedding_lookup(model.layers[2].embeddings, node_neighbor_id)
         bias = tf.reshape(bias, bias.shape[0])
         score = tf.reduce_sum(tf.multiply(node_embedding, node_neighbor_embedding), axis=1) + bias
-        if calc_reward:
+        if calc_score:
             score = tf.clip_by_value(score, clip_value_min=-10, clip_value_max=10)
-            reward = tf.math.log(1 + tf.exp(score))
-            return reward
+            score = tf.math.log(1 + tf.exp(score))
+            return score
         else:
             label = tf.Variable(label, dtype=tf.float32)
-            loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(label, score)) + self.lambda_dis * (
+            loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(label, score)) + self.lambda_dis * (
                     tf.nn.l2_loss(node_neighbor_embedding) + tf.nn.l2_loss(node_embedding) + tf.nn.l2_loss(bias))
             return loss
 
-    def __generator_loss(self, model, node_id, node_neighbor_id, reward):
-        reward = tf.Variable(reward, dtype=tf.float32)
+    def __generator_loss(self, model, node_id, node_neighbor_id, disc_score):
+        disc_score = tf.Variable(disc_score, dtype=tf.float32)
         node_embedding = tf.nn.embedding_lookup(model.layers[1].embeddings, node_id)
         node_neighbor_embedding = tf.nn.embedding_lookup(model.layers[1].embeddings, node_neighbor_id)
 
@@ -309,8 +309,8 @@ class GANStratification(object):
         bias = tf.reshape(bias, bias.shape[0])
         score = tf.reduce_sum(tf.multiply(node_embedding, node_neighbor_embedding), axis=1) + bias
         prob = tf.clip_by_value(tf.nn.sigmoid(score), 1e-5, 1)
-        loss = -tf.reduce_mean(tf.math.log(prob) * reward) + self.lambda_gen * (
-                tf.nn.l2_loss(node_neighbor_embedding) + tf.nn.l2_loss(node_embedding))
+        loss = -tf.reduce_mean(tf.math.log(prob) * disc_score) + self.lambda_gen * (
+                tf.nn.l2_loss(node_neighbor_embedding) + tf.nn.l2_loss(node_embedding) + tf.nn.l2_loss(bias))
         return loss
 
     def __optimizer(self):
@@ -322,51 +322,54 @@ class GANStratification(object):
             2].embeddings
         return temp
 
-    def __sample(self, weight_score, root, tree, sample_num, for_d):
-        """ sample nodes from BFS-tree
+    def __sample(self, weight_score, node_idx, tree, num_examples, for_d):
+        """ Sample nodes from BFS-tree
 
         Args:
-            root: int, root node
+            node_idx: int, root node
             tree: dict, BFS-tree
-            sample_num: the number of required samples
-            for_d: bool, whether the samples are used for the generator or the discriminator
+            num_examples: the number of required examples
+            for_d: bool, whether the examples are used for the generator or the discriminator
         Returns:
-            samples: list, the indices of the sampled nodes
+            examples: list, the indices of the sampled nodes
             paths: list, paths from the root to the sampled nodes
         """
 
-        samples = []
-        paths = []
+        examples = list()
+        paths = list()
         n = 0
-
-        while len(samples) < sample_num:
-            current_node = root
+        while len(examples) < num_examples:
+            current_node = node_idx
             previous_node = -1
-            paths.append([])
+            paths.append(list())
             is_root = True
             paths[n].append(current_node)
             while True:
-                node_neighbor = tree[current_node][1:] if is_root else tree[current_node]
+                neighbor2current_node = tree[current_node][1:] if is_root else tree[current_node]
                 is_root = False
-                if len(node_neighbor) == 0:  # the tree only has a root
+                if len(neighbor2current_node) == 0:  # the tree only has a root
                     return None, None
-                if for_d:  # skip 1-hop nodes (positive samples)
-                    if node_neighbor == [root]:
+                if for_d:  # skip 1-hop nodes (positive examples)
+                    if neighbor2current_node == [node_idx]:
                         # in current version, None is returned for simplicity
                         return None, None
-                    if root in node_neighbor:
-                        node_neighbor.remove(root)
-                relevance_probability = weight_score[current_node].numpy()[node_neighbor].tolist()
+                    if node_idx in neighbor2current_node:
+                        neighbor2current_node.remove(node_idx)
+                relevance_probability = weight_score[current_node].numpy()[neighbor2current_node].tolist()
                 relevance_probability = softmax(relevance_probability)
-                next_node = np.random.choice(node_neighbor, size=1, p=relevance_probability)[0]  # select next node
+                next_node = np.random.choice(neighbor2current_node, size=1, p=relevance_probability)[
+                    0]  # select next node
                 paths[n].append(next_node)
-                if next_node == previous_node:  # terminating condition
-                    samples.append(current_node)
+                if next_node == previous_node:
+                    # TODO: this has negative consequences where nodes with
+                    #  not satisfying this condition may be eliminated to
+                    #  contructing samples
+                    examples.append(current_node)
                     break
                 previous_node = current_node
                 current_node = next_node
             n = n + 1
-        return samples, paths
+        return examples, paths
 
     def __get_node_pairs_from_path(self, path):
         """
@@ -378,7 +381,7 @@ class GANStratification(object):
         """
 
         path = path[:-1]
-        pairs = []
+        pairs = list()
         for i in range(len(path)):
             center_node = path[i]
             for j in range(max(i - self.window_size, 0), min(i + self.window_size + 1, len(path))):
@@ -391,22 +394,25 @@ class GANStratification(object):
     def __sample_generator(self, model, weight_score, root_nodes, trees):
         """sample nodes for the generator"""
 
-        paths = []
-        for i in root_nodes:
+        paths = list()
+        for node_idx in root_nodes:
             if np.random.rand() < self.update_ratio:
-                sample, paths_from_i = self.__sample(weight_score, i, trees[i], self.num_examples2gen, for_d=False)
-                if paths_from_i is not None:
-                    paths.extend(paths_from_i)
+                temp, paths_from_node_idx = self.__sample(weight_score=weight_score, node_idx=node_idx,
+                                                          tree=trees[node_idx], num_examples=self.num_examples2gen,
+                                                          for_d=False)
+                del temp
+                if paths_from_node_idx is not None:
+                    paths.extend(paths_from_node_idx)
         node_pairs = list(map(self.__get_node_pairs_from_path, paths))
-        node_1 = []
-        node_2 = []
-        for i in range(len(node_pairs)):
-            for pair in node_pairs[i]:
-                node_1.append(pair[0])
-                node_2.append(pair[1])
-        reward = self.__discriminator_loss(model=model, node_id=np.array(node_1), node_neighbor_id=np.array(node_2),
-                                           calc_reward=True)
-        return node_1, node_2, reward
+        node_1 = list()
+        node_2 = list()
+        for node_idx in range(len(node_pairs)):
+            for pair in node_pairs[node_idx]:
+                node_1.append(pair[0.1])
+                node_2.append(pair[0.9])
+        score = self.__discriminator_loss(model=model, node_id=np.array(node_1), node_neighbor_id=np.array(node_2),
+                                          calc_score=True)
+        return node_1, node_2, score
 
     def __sample_discriminator(self, weight_score, root_nodes, graph, trees):
         """generate positive and negative samples for the discriminator, and record them in the txt file
@@ -414,23 +420,25 @@ class GANStratification(object):
         Args:
             model:
         """
-        center_nodes = []
-        neighbor_nodes = []
-        labels = []
-        for i in root_nodes:
+        center_nodes = list()
+        neighbor_nodes = list()
+        labels = list()
+        for node_idx in root_nodes:
             if np.random.rand() < self.update_ratio:
-                pos = graph[i]
-                neg, _ = self.__sample(weight_score, i, trees[i], len(pos), for_d=True)
-                if len(pos) != 0 and neg is not None:
+                positive = graph[node_idx]
+                negative, temp = self.__sample(weight_score=weight_score, node_idx=node_idx, tree=trees[node_idx],
+                                               num_examples=len(positive), for_d=True)
+                del temp
+                if len(positive) != 0 and negative is not None:
                     # positive samples
-                    center_nodes.extend([i] * len(pos))
-                    neighbor_nodes.extend(pos)
-                    labels.extend([1] * len(pos))
+                    center_nodes.extend([node_idx] * len(positive))
+                    neighbor_nodes.extend(positive)
+                    labels.extend([0.9] * len(positive))
 
                     # negative samples
-                    center_nodes.extend([i] * len(pos))
-                    neighbor_nodes.extend(neg)
-                    labels.extend([0] * len(neg))
+                    center_nodes.extend([node_idx] * len(positive))
+                    neighbor_nodes.extend(negative)
+                    labels.extend([0.1] * len(negative))
         return center_nodes, neighbor_nodes, labels
 
     def __train_gan(self, generator, discriminator, root_nodes, graph, trees, checkpoint, checkpoint_prefix):
@@ -438,9 +446,9 @@ class GANStratification(object):
         total_epochs = self.num_epochs * self.max_iter_dis * self.max_iter_gen
         for epoch in range(1, num_epochs):
             # D-steps
-            center_nodes = []
-            neighbor_nodes = []
-            labels = []
+            center_nodes = list()
+            neighbor_nodes = list()
+            labels = list()
             for idx in range(self.max_iter_dis):
                 # generate new nodes for the discriminator for every dis_interval iterations
                 if idx % self.display_interval == 0:
@@ -453,39 +461,40 @@ class GANStratification(object):
                 # training
                 list_batches = list(range(0, len(center_nodes), self.batch_size))
                 random.shuffle(list_batches)
-                for start in list_batches:
+                for start_idx in list_batches:
                     with tf.GradientTape() as tape:
-                        end = start + self.batch_size
-                        loss = self.__discriminator_loss(model=discriminator, node_id=np.array(center_nodes[start:end]),
-                                                         node_neighbor_id=np.array(neighbor_nodes[start:end]),
-                                                         label=np.array(labels[start:end]))
+                        final_idx = start_idx + self.batch_size
+                        loss = self.__discriminator_loss(model=discriminator,
+                                                         node_id=np.array(center_nodes[start_idx:final_idx]),
+                                                         node_neighbor_id=np.array(neighbor_nodes[start_idx:final_idx]),
+                                                         label=np.array(labels[start_idx:final_idx]))
                         gradients = tape.gradient(loss, discriminator.trainable_variables)
                         optimizer = self.__optimizer()
                         optimizer.apply_gradients(zip(gradients, discriminator.trainable_variables))
 
             # G-steps
-            first_node = []
-            second_node = []
-            reward = []
+            first_node = list()
+            second_node = list()
+            disc_score = list()
             for idx in range(self.max_iter_gen):
                 if idx % self.display_interval == 0:
                     weight_score = self.__generator_embed_score(model=generator)
-                    first_node, second_node, reward = self.__sample_generator(model=discriminator,
-                                                                              weight_score=weight_score,
-                                                                              root_nodes=root_nodes,
-                                                                              trees=trees)
+                    first_node, second_node, disc_score = self.__sample_generator(model=discriminator,
+                                                                                  weight_score=weight_score,
+                                                                                  root_nodes=root_nodes,
+                                                                                  trees=trees)
                     checkpoint.save(file_prefix=checkpoint_prefix)
 
                 # training
                 list_batches = list(range(0, len(first_node), self.batch_size))
                 random.shuffle(list_batches)
-                for start in list_batches:
+                for start_idx in list_batches:
                     with tf.GradientTape() as tape:
-                        end = start + self.batch_size
+                        final_idx = start_idx + self.batch_size
                         loss = self.__generator_loss(model=generator,
-                                                     node_id=np.array(first_node[start:end]),
-                                                     node_neighbor_id=np.array(second_node[start:end]),
-                                                     reward=np.array(reward[start:end]))
+                                                     node_id=np.array(first_node[start_idx:final_idx]),
+                                                     node_neighbor_id=np.array(second_node[start_idx:final_idx]),
+                                                     disc_score=np.array(disc_score[start_idx:final_idx]))
                         gradients = tape.gradient(loss, generator.trainable_variables)
                         optimizer = self.__optimizer()
                         optimizer.apply_gradients(zip(gradients, generator.trainable_variables))
@@ -512,7 +521,7 @@ class GANStratification(object):
         data partition : two lists of the resulted data split
         """
 
-        check, X = check_type(X)
+        check, X = check_type(X, False)
         if not check:
             tmp = "The method only supports scipy.sparse and numpy.ndarray type of data"
             raise Exception(tmp)
@@ -537,7 +546,7 @@ class GANStratification(object):
             A[A <= 0.05] = 0.0
             A = lil_matrix(A)
             graph = {i: list(A[i].nonzero()[1]) for i in range(A.shape[0])}
-            # construct or read BFS-trees
+            # construct BFS-trees
             root_nodes = [i for i in range(num_labels)]
             trees = self.__build_trees(nodes=root_nodes, graph=graph)
 
@@ -607,13 +616,16 @@ if __name__ == "__main__":
     X_name = "Xbirds_train.pkl"
     y_name = "Ybirds_train.pkl"
 
-    file_path = os.path.join(DATASET_PATH, X_name)
-    with open(file_path, mode="rb") as f_in:
-        X = pkl.load(f_in)
-
     file_path = os.path.join(DATASET_PATH, y_name)
     with open(file_path, mode="rb") as f_in:
         y = pkl.load(f_in)
+        idx = list(set(y.nonzero()[0]))
+        y = y[idx]
+
+    file_path = os.path.join(DATASET_PATH, X_name)
+    with open(file_path, mode="rb") as f_in:
+        X = pkl.load(f_in)
+        X = X[idx]
 
     st = GANStratification(num_clusters=5, shuffle=True, split_size=0.8, batch_size=100, num_epochs=1, lr=0.0001,
                            num_jobs=2)

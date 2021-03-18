@@ -226,7 +226,7 @@ class LabelEnhancementStratification(object):
         data partition : two lists of the resulted data split
         """
 
-        check, X = check_type(X)
+        check, X = check_type(X, False)
         if not check:
             tmp = "The method only supports scipy.sparse and numpy.ndarray type of data"
             raise Exception(tmp)

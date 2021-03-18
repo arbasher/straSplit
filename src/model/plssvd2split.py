@@ -4,17 +4,17 @@ Clustering based stratified multi-label data splitting
 
 import os
 import pickle as pkl
-import random
 import sys
 import time
 import warnings
 
 import numpy as np
-from joblib import Parallel, delayed
 from scipy.cluster.vq import kmeans2
 from scipy.sparse import lil_matrix
 from sklearn.cross_decomposition import PLSSVD
 
+from src.model.extreme2split import ExtremeStratification
+from src.model.naive2split import NaiveStratification
 from src.utility.file_path import DATASET_PATH
 from src.utility.utils import check_type, LabelBinarizer
 
@@ -23,7 +23,9 @@ np.seterr(divide='ignore', invalid='ignore')
 
 
 class ClusterStratification(object):
-    def __init__(self, num_clusters: int = 20, shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100,
+    def __init__(self, num_clusters: int = 20, swap_probability: float = 0.1, threshold_proportion: float = 0.1,
+                 decay: float = 0.1,
+                 shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100,
                  num_epochs: int = 5, lr: float = 0.0001, num_jobs: int = 2):
 
         """Clustering based stratified based multi-label data splitting.
@@ -32,6 +34,15 @@ class ClusterStratification(object):
         ----------
         num_clusters : int, default=5
             The number of communities to form. It should be greater than 1.
+
+        swap_probability : float, default=0.1
+            A hyper-parameter for stratification.
+
+        threshold_proportion : float, default=0.1
+            A hyper-parameter for stratification.
+
+        decay : float, default=0.1
+            A hyper-parameter for stratification.
 
         shuffle : bool, default=True
             Whether or not to shuffle the data before splitting. If shuffle=False
@@ -59,6 +70,18 @@ class ClusterStratification(object):
         if num_clusters < 1:
             num_clusters = 20
         self.num_clusters = num_clusters
+
+        if swap_probability < 0.0:
+            swap_probability = 0.1
+        self.swap_probability = swap_probability
+
+        if threshold_proportion < 0.0:
+            threshold_proportion = 0.1
+        self.threshold_proportion = threshold_proportion
+
+        if decay < 0.0:
+            decay = 0.1
+        self.decay = decay
 
         self.shuffle = shuffle
 
@@ -98,6 +121,9 @@ class ClusterStratification(object):
 
         argdict = dict()
         argdict.update({'num_clusters': 'Number of clusters to form: {0}'.format(self.num_clusters)})
+        argdict.update({'swap_probability': 'A hyper-parameter: {0}'.format(self.swap_probability)})
+        argdict.update({'threshold_proportion': 'A hyper-parameter: {0}'.format(self.threshold_proportion)})
+        argdict.update({'decay': 'A hyper-parameter: {0}'.format(self.decay)})
         argdict.update({'shuffle': 'Shuffle the dataset? {0}'.format(self.shuffle)})
         argdict.update({'split_size': 'Split size: {0}'.format(self.split_size)})
         argdict.update({'batch_size': 'Number of examples to use in '
@@ -143,64 +169,32 @@ class ClusterStratification(object):
         optimal_init = 1.0 / (initial_eta0 * alpha)
         return optimal_init
 
-    def __parallel_split(self, examples, check_list):
-        """Online or batch based strategy to splitting multi-label dataset
-        into train and test subsets.
-
-        Parameters
-        ----------
-        examples : a list containing indices of label dataset.
-
-        check_list : a list holding long term data indices that were included
-                     in the ongoing data split process (either train or test data).
-
-        Returns
-        -------
-        data partition : two lists of the resulted split data
-        """
-
-        temp_dict = dict({0: [], 1: []})
-        examples_batch = [i for i in examples if i not in check_list]
-        if self.shuffle:
-            random.shuffle(examples_batch)
-        sample_size = len(examples_batch)
-        if sample_size == 0:
-            return sorted(temp_dict[0]), sorted(temp_dict[1])
-        else:
-            check_list.extend(examples_batch)
-            if sample_size > 0:
-                j = round(sample_size * self.split_size)
-                for k in range(2):
-                    temp = temp_dict[k] + examples_batch[:j]
-                    temp = list(set(temp))
-                    temp_dict.update({k: temp})
-                    examples_batch = examples_batch[j:]
-                    del temp
-            else:
-                temp = temp_dict[0] + examples_batch
-                temp = list(set(temp))
-                temp_dict.update({0: temp})
-        return sorted(temp_dict[0]), sorted(temp_dict[1])
-
-    def fit(self, X, y):
+    def fit(self, X, y, use_extreme: bool = False):
         """Split multi-label y dataset into train and test subsets.
 
         Parameters
         ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_features)
-            Matrix `X`.
+        X : {array-like, sparse matrix} of shape (n_samples, n_features).
 
-        y : {array-like, sparse matrix} of shape (n_samples, n_labels)
-            Matrix `y`.
+        y : {array-like, sparse matrix} of shape (n_samples, n_labels).
+
+        use_extreme : whether to apply stratification for extreme
+        multi-label datasets.
 
         Returns
         -------
-        data partition : two lists of the resulted data split
+        data partition : two lists of indices representing the resulted data split
         """
 
-        check, X = check_type(X)
+
+        check, X = check_type(X=X, return_list=False)
         if not check:
-            tmp = "The method only supports scipy.sparse and numpy.ndarray type of data"
+            tmp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
+            raise Exception(tmp)
+
+        check, y = check_type(X=y, return_list=False)
+        if not check:
+            tmp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
             raise Exception(tmp)
 
         num_examples, num_features, num_labels = X.shape[0], X.shape[1], y.shape[1]
@@ -215,8 +209,6 @@ class ClusterStratification(object):
         # 1)- Compute covariance of X and y using SVD
         if not self.is_fit:
             model = PLSSVD(n_components=self.num_clusters, scale=True, copy=False)
-            lam_reg = 0.5
-            mu_reg = 0.5
             optimal_init = self.__optimal_learning_rate(alpha=self.lr)
             list_batches = np.arange(start=0, stop=num_examples, step=self.batch_size)
             total_progress = self.num_epochs * len(list_batches)
@@ -233,8 +225,8 @@ class ClusterStratification(object):
                               y[batch_idx:batch_idx + self.batch_size].toarray())
                     U = model.x_weights_
                     learning_rate = 1.0 / (self.lr * (optimal_init + epoch - 1))
-                    U = U + learning_rate * (lam_reg * 2 * U)
-                    U = U + learning_rate * (mu_reg * np.sign(U))
+                    U = U + learning_rate * (0.5 * 2 * U)
+                    U = U + learning_rate * (0.5 * np.sign(U))
                     model.x_weights_ = U
             self.U = lil_matrix(model.x_weights_)
             del U, model
@@ -256,41 +248,27 @@ class ClusterStratification(object):
 
         mlb = LabelBinarizer(labels=list(range(self.num_clusters)))
         y = mlb.reassign_labels(y, mapping_labels=label_kmeans)
-        num_labels = self.num_clusters
-
-        desc = '\t>> Stratified Split...'
-        print(desc)
-        check_list = list()
-        train_list = list()
-        test_list = list()
-        parallel = Parallel(n_jobs=self.num_jobs, prefer="threads", verbose=0)
-        # Find the label with the fewest (but at least one) remaining
-        # examples, breaking ties randomly
-        for label_idx in range(num_labels):
-            examples = list(y[:, label_idx].nonzero()[0])
-            if len(examples) == 0:
-                continue
-            list_batches = np.arange(start=0, stop=len(examples), step=self.batch_size)
-            results = parallel(delayed(self.__parallel_split)(examples[batch_idx:batch_idx + self.batch_size],
-                                                              check_list)
-                               for idx, batch_idx in enumerate(list_batches))
-            desc = '\t\t--> Splitting progress: {0:.2f}%...'.format(((label_idx + 1) / num_labels) * 100)
-            if label_idx + 1 == num_labels:
-                print(desc)
-            else:
-                print(desc, end="\r")
-            results = list(zip(*results))
-            train_list.extend([i for item in results[0] for i in item])
-            test_list.extend([i for item in results[1] for i in item])
-            del results
-        del check_list
         self.is_fit = True
-        return sorted(train_list), sorted(test_list)
+
+        if use_extreme:
+            extreme = ExtremeStratification(swap_probability=self.swap_probability,
+                                            threshold_proportion=self.threshold_proportion,
+                                            decay=self.decay, shuffle=self.shuffle,
+                                            split_size=self.split_size, num_epochs=self.num_epochs,
+                                            verbose=False)
+            train_list, test_list = extreme.fit(X=X, y=y)
+        else:
+            naive = NaiveStratification(shuffle=self.shuffle, split_size=self.split_size,
+                                        batch_size=self.batch_size, num_jobs=self.num_jobs,
+                                        verbose=False)
+            train_list, test_list = naive.fit(y=y)
+        return train_list, test_list
 
 
 if __name__ == "__main__":
     X_name = "Xbirds_train.pkl"
     y_name = "Ybirds_train.pkl"
+    use_extreme = True
 
     file_path = os.path.join(DATASET_PATH, y_name)
     with open(file_path, mode="rb") as f_in:
@@ -306,9 +284,12 @@ if __name__ == "__main__":
     st = ClusterStratification(num_clusters=5, shuffle=True, split_size=0.8,
                                batch_size=100, num_epochs=5, lr=0.0001,
                                num_jobs=2)
-    training_set, test_set = st.fit(X=X, y=y)
-    training_set, dev_set = st.fit(X=X[training_set], y=y[training_set])
+    training_idx, test_idx = st.fit(X=X, y=y, use_extreme=use_extreme)
+    training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx],
+                                   use_extreme=use_extreme)
 
-    print("training set size: {0}".format(len(training_set)))
-    print("validation set size: {0}".format(len(dev_set)))
-    print("test set size: {0}".format(len(test_set)))
+    print("\n{0}".format(60 * "-"))
+    print("## Summary...")
+    print("\t>> Training set size: {0}".format(len(training_idx)))
+    print("\t>> Validation set size: {0}".format(len(dev_idx)))
+    print("\t>> Test set size: {0}".format(len(test_idx)))
