@@ -40,8 +40,8 @@ class GraphVAEModel:
             self.q_z = tf.distributions.Normal(self.embeddings_mean, self.embeddings_std)
 
             self.embeddings = tf.cond(self.variational,
-                                      lambda: self.q_z.__sample(,,,,
-                              lambda: self.embeddings_mean)
+                                      lambda: self.q_z.__sample(,,, ,
+            lambda: self.embeddings_mean)
 
             with tf.variable_scope('decoder'):
                 self.edges_logits, self.nodes_logits = self.decoder(self.embeddings, decoder_units, vertexes, edges,

@@ -56,9 +56,9 @@ class GraphVAEOptimizer(object):
         self.model = model
 
     def __log_likelihood(self, n):
-        z = self.model.q_z.__sample(n,,,,
+        z = self.model.q_z.__sample(n,,, ,
 
-            log_p_z = self.p_z.log_prob(z)
+        log_p_z = self.p_z.log_prob(z)
         log_p_z = tf.reduce_sum(log_p_z, axis=-1)
 
         log_p_x_z = -self.loss_

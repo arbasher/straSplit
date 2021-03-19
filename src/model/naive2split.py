@@ -157,7 +157,7 @@ class NaiveStratification(object):
             mlb = LabelBinarizer(labels=classes)
             y = mlb.transform(y)
 
-        desc = '\t>> Stratified Split...'
+        desc = '\t>> Perform splitting...'
         print(desc)
         check_list = list()
         train_list = list()

@@ -1,5 +1,6 @@
 '''
-Community based stratified multi-label dataset splitting
+Clustering eigenvalues of the label adjacency matrix
+to perform stratified split of a multi-label dataset
 '''
 
 import os
@@ -8,9 +9,9 @@ import sys
 import time
 import warnings
 
-import igraph
 import numpy as np
-from scipy.sparse import triu
+from scipy import linalg
+from scipy.cluster.vq import kmeans2
 
 from src.model.extreme2split import ExtremeStratification
 from src.model.naive2split import NaiveStratification
@@ -21,11 +22,11 @@ np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
 
 
-class CommunityStratification(object):
-    def __init__(self, num_subsamples: int = 10000, num_communities: int = 5, walk_size: int = 4, sigma: float = 2,
+class ClusteringEigenStratification(object):
+    def __init__(self, num_subsamples: int = 10000, num_clusters: int = 5, sigma: float = 2,
                  swap_probability: float = 0.1, threshold_proportion: float = 0.1, decay: float = 0.1,
-                 shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100, num_epochs: int = 50,
-                 num_jobs: int = 2):
+                 shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100,
+                 num_epochs: int = 50, num_jobs: int = 2):
         """Community based stratified based multi-label data splitting.
 
         Parameters
@@ -34,11 +35,8 @@ class CommunityStratification(object):
             The number of subsamples to use for detecting communities.
             It should be greater than 100.
 
-        num_communities : int, default=5
+        num_clusters : int, default=5
             The number of communities to form. It should be greater than 1.
-
-        walk_size : int, default=4
-            The length of random walks to perform, It should be greater than 2.
 
         sigma : float, default=2
             Scaling component to the graph degree matrix.
@@ -77,13 +75,9 @@ class CommunityStratification(object):
             num_subsamples = 100
         self.num_subsamples = num_subsamples
 
-        if num_communities < 1:
-            num_communities = 5
-        self.num_communities = num_communities
-
-        if walk_size < 2:
-            walk_size = 4
-        self.walk_size = walk_size
+        if num_clusters < 1:
+            num_clusters = 5
+        self.num_clusters = num_clusters
 
         if sigma < 0.0:
             sigma = 2
@@ -131,8 +125,7 @@ class CommunityStratification(object):
 
         argdict = dict()
         argdict.update({'num_subsamples': 'Subsampling input size: {0}'.format(self.num_subsamples)})
-        argdict.update({'num_communities': 'Number of communities: {0}'.format(self.num_communities)})
-        argdict.update({'walk_size': 'The length of random walks to perform: {0}'.format(self.walk_size)})
+        argdict.update({'num_clusters': 'Number of communities: {0}'.format(self.num_clusters)})
         argdict.update({'sigma': 'Constant that scales the amount of '
                                  'laplacian norm regularization: {0}'.format(self.sigma)})
         argdict.update({'swap_probability': 'A hyper-parameter: {0}'.format(self.swap_probability)})
@@ -154,7 +147,7 @@ class CommunityStratification(object):
         args = '\n\t\t'.join(args)
         print('\t>> The following arguments are applied:\n\t\t{0}'.format(args), file=sys.stderr)
 
-    def __graph_construction(self, X):
+    def __cluster_generation(self, X):
         """Clustering labels after constructing graph adjacency matrix empirically.
 
         Parameters
@@ -164,21 +157,15 @@ class CommunityStratification(object):
 
         Returns
         -------
-        community labels : a list of communities defining a community to a label association
+        clusters labels : a list of clusters defining a cluster to a label association
         """
 
         A = X.T.dot(X)
-        A = normalize_laplacian(A=A, sigma=self.sigma, return_adj=True, norm_adj=True)
-        A = triu(A)
-        # Create the graph
-        vertices = [i for i in range(A.shape[0])]
-        edges = list(zip(*A.nonzero()))
-        weight = A.data.tolist()
-        g = igraph.Graph(vertex_attrs={"label": vertices}, edges=edges)
-        g = g.community_walktrap(weights=weight, steps=self.walk_size)
-        communities = g.as_clustering(n=self.num_communities)
-        communities = np.array(communities.membership)
-        return communities
+        A = normalize_laplacian(A=A, sigma=self.sigma, return_adj=False, norm_adj=False)
+        _, V = linalg.eigh(A.toarray())
+        V = V[:, -self.num_clusters:]
+        _, label = kmeans2(data=V, k=self.num_clusters, iter=self.num_epochs, minit='++')
+        return label
 
     def fit(self, y, X=None, use_extreme: bool = False):
         """Split multi-label y dataset into train and test subsets.
@@ -218,13 +205,13 @@ class CommunityStratification(object):
             y = mlb.transform(y)
 
         if not self.is_fit:
-            desc = '\t>> Building Graph...'
+            desc = '\t>> Extracting clusters...'
             print(desc)
             # Construct graph
             idx = np.random.choice(a=list(range(num_examples)), size=self.num_subsamples, replace=True)
-            self.community_labels = self.__graph_construction(y[idx])
-        mlb = LabelBinarizer(labels=list(range(self.num_communities)))
-        y = mlb.reassign_labels(y, mapping_labels=self.community_labels)
+            self.clusters_labels = self.__cluster_generation(y[idx])
+        mlb = LabelBinarizer(labels=list(range(self.num_clusters)))
+        y = mlb.reassign_labels(y, mapping_labels=self.clusters_labels)
         self.is_fit = True
 
         # perform splitting
@@ -257,8 +244,9 @@ if __name__ == "__main__":
         X = pkl.load(f_in)
         X = X[idx]
 
-    st = CommunityStratification(num_subsamples=10000, num_communities=5, walk_size=5, sigma=2, shuffle=True,
-                                 split_size=0.8, batch_size=100, num_jobs=10)
+    st = ClusteringEigenStratification(num_subsamples=10000, num_clusters=5, sigma=2,
+                                       shuffle=True, split_size=0.8, batch_size=100,
+                                       num_jobs=10)
     training_idx, test_idx = st.fit(y=y, X=X, use_extreme=use_extreme)
     training_idx, dev_idx = st.fit(y=y[training_idx], X=X[training_idx], use_extreme=use_extreme)
 

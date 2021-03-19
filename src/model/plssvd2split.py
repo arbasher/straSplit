@@ -186,7 +186,6 @@ class ClusterStratification(object):
         data partition : two lists of indices representing the resulted data split
         """
 
-
         check, X = check_type(X=X, return_list=False)
         if not check:
             tmp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
@@ -250,6 +249,7 @@ class ClusterStratification(object):
         y = mlb.reassign_labels(y, mapping_labels=label_kmeans)
         self.is_fit = True
 
+        # perform splitting
         if use_extreme:
             extreme = ExtremeStratification(swap_probability=self.swap_probability,
                                             threshold_proportion=self.threshold_proportion,
@@ -268,7 +268,7 @@ class ClusterStratification(object):
 if __name__ == "__main__":
     X_name = "Xbirds_train.pkl"
     y_name = "Ybirds_train.pkl"
-    use_extreme = True
+    use_extreme = False
 
     file_path = os.path.join(DATASET_PATH, y_name)
     with open(file_path, mode="rb") as f_in:
