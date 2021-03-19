@@ -7,6 +7,7 @@ import os
 import pickle as pkl
 import random
 import sys
+import textwrap
 import time
 import warnings
 
@@ -79,7 +80,8 @@ class ExtremeStratification(object):
             time.sleep(2)
 
     def __print_arguments(self, **kwargs):
-        desc = "Split extreme multi-label data using stratified partitioning..."
+        desc = "## Configuration parameters to stratifying a large scale " \
+               "multi-label dataset splitting:"
         print(desc)
 
         argdict = dict()
@@ -97,7 +99,8 @@ class ExtremeStratification(object):
             args.append(value)
         args = [str(item[0] + 1) + '. ' + item[1] for item in zip(list(range(len(args))), args)]
         args = '\n\t\t'.join(args)
-        print('\t## The following arguments are applied:\n\t\t{0}'.format(args), file=sys.stderr)
+        print(textwrap.TextWrapper(width=75, subsequent_indent='   ').fill(desc), file=sys.stderr)
+        print('\t\t{0}'.format(args), file=sys.stderr)
 
     # 1. Create instances_dict to keep track of instance information:
     def __create_instances_dict(self, X, y):

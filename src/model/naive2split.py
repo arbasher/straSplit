@@ -6,6 +6,7 @@ import os
 import pickle as pkl
 import random
 import sys
+import textwrap
 import time
 import warnings
 
@@ -72,7 +73,8 @@ class NaiveStratification(object):
             time.sleep(2)
 
     def __print_arguments(self, **kwargs):
-        desc = "Split multi-label data using naive stratified approach..."
+        desc = "## Configuration parameters to naive based stratified multi-label " \
+               "dataset splitting:"
         print(desc)
 
         argdict = dict()
@@ -89,7 +91,8 @@ class NaiveStratification(object):
             args.append(value)
         args = [str(item[0] + 1) + '. ' + item[1] for item in zip(list(range(len(args))), args)]
         args = '\n\t\t'.join(args)
-        print('\t## The following arguments are applied:\n\t\t{0}'.format(args), file=sys.stderr)
+        print(textwrap.TextWrapper(width=75, subsequent_indent='   ').fill(desc), file=sys.stderr)
+        print('\t\t{0}'.format(args), file=sys.stderr)
 
     def __parallel_split(self, examples, check_list):
         """Online or batch based strategy to splitting multi-label dataset

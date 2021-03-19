@@ -6,6 +6,7 @@ to perform stratified split of a multi-label dataset
 import os
 import pickle as pkl
 import sys
+import textwrap
 import time
 import warnings
 
@@ -120,7 +121,9 @@ class ClusteringEigenStratification(object):
         time.sleep(2)
 
     def __print_arguments(self, **kwargs):
-        desc = "## Split multi-label data using community based approach..."
+        desc = "## Configuration parameters to stratifying a multi-label " \
+               "dataset splitting based on clustering eigen values of the " \
+               "label adjacency matrix:"
         print(desc)
 
         argdict = dict()
@@ -145,7 +148,8 @@ class ClusteringEigenStratification(object):
             args.append(value)
         args = [str(item[0] + 1) + '. ' + item[1] for item in zip(list(range(len(args))), args)]
         args = '\n\t\t'.join(args)
-        print('\t>> The following arguments are applied:\n\t\t{0}'.format(args), file=sys.stderr)
+        print(textwrap.TextWrapper(width=75, subsequent_indent='   ').fill(desc), file=sys.stderr)
+        print('\t\t{0}'.format(args), file=sys.stderr)
 
     def __cluster_generation(self, y):
         """Clustering labels after constructing graph adjacency matrix empirically.

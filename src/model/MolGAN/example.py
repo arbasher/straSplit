@@ -197,4 +197,4 @@ trainer = Trainer(model, optimizer, session)
 
 print('Parameters: {}'.format(np.sum([np.prod(e.shape) for e in session.run(tf.trainable_variables())])))
 
-trainer.__train_gan(0, 0,,,, , , , , ,
+trainer.__train_gan(0, 0,,, , , , , , ,
