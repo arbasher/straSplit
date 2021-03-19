@@ -18,14 +18,11 @@ import tensorflow as tf
 import tqdm
 from joblib import Parallel, delayed
 from scipy import sparse
-from scipy.cluster.vq import kmeans2
 from scipy.sparse import lil_matrix
 from tensorflow.keras import layers
 
-from src.model.extreme2split import ExtremeStratification
-from src.model.naive2split import NaiveStratification
 from src.utility.file_path import DATASET_PATH, LOG_PATH, RESULT_PATH
-from src.utility.utils import check_type, LabelBinarizer, softmax
+from src.utility.utils import check_type, softmax, LabelBinarizer
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
@@ -35,47 +32,17 @@ logger.setLevel(logging.FATAL)
 
 
 class GANStratification(object):
-    def __init__(self, dimension_size: int = 50, num_examples2gen=20, update_ratio=1, window_size=2,
-                 num_subsamples: int = 10000, num_clusters: int = 5, sigma: float = 2, swap_probability: float = 0.1,
-                 threshold_proportion: float = 0.1, decay: float = 0.1, shuffle: bool = True, split_size: float = 0.75,
-                 batch_size: int = 100, num_epochs: int = 5, max_iter_gen=30, max_iter_dis=30, lambda_gen=1e-5,
-                 lambda_dis=1e-5, lr: float = 1e-3, display_interval=30, num_jobs: int = 2):
+    def __init__(self, num_subsamples: int = 10000, num_clusters: int = 5, num_examples2gen=20,
+                 dimension_size: int = 50, sigma: float = 2, lambda_dis=1e-5, lambda_gen=1e-5, shuffle: bool = True,
+                 split_size: float = 0.75, update_ratio=1, batch_size: int = 100, num_epochs: int = 5, max_iter_gen=30,
+                 max_iter_dis=30, window_size=2, lr: float = 1e-3, num_jobs: int = 2, display_interval=30):
 
         """Clustering based stratified based multi-label data splitting.
 
         Parameters
         ----------
-        dimension_size : int, default=50
-            The dimension size of embeddings.
-
-        num_examples2gen : int, default=20
-            The number of samples for the generator.
-
-        update_ratio : int, default=1
-            Updating ratio when choose the trees.
-
-        window_size : int, default=2
-            Window size to skip.
-
-        num_subsamples : int, default=10000
-            The number of subsamples to use for detecting communities.
-            It should be greater than 100.
-
         num_clusters : int, default=5
             The number of communities to form. It should be greater than 1.
-
-        sigma : float, default=2.0
-            Scaling component to the graph degree matrix.
-            It should be greater than 0.
-
-        swap_probability : float, default=0.1
-            A hyper-parameter for stratification.
-
-        threshold_proportion : float, default=0.1
-            A hyper-parameter for stratification.
-
-        decay : float, default=0.1
-            A hyper-parameter for stratification.
 
         shuffle : bool, default=True
             Whether or not to shuffle the data before splitting. If shuffle=False
@@ -92,47 +59,38 @@ class GANStratification(object):
         num_epochs : int, default=50
             The number of iterations of the k-means algorithm to run.
 
-        max_iter_gen : int, default=30
-            The number of inner loops for the generator.
-
-        max_iter_dis : int, default=30
-            The number of inner loops for the discriminator.
-
-        lambda_gen : float, default=1e-5
-            The l2 loss regulation weight for the generator.
-
-        lambda_dis : float, default=1e-5
-            The l2 loss regulation weight for the discriminator.
-
         lr : float, default=0.0001
             Learning rate.
-
-        display_interval : int, default=30
-            Sample new nodes for the discriminator for every dis_interval iterations.
 
         num_jobs : int, default=2
             The number of parallel jobs to run for splitting.
             ``-1`` means using all processors.
+
+        lambda_gen = 1e-5  # l2 loss regulation weight for the generator
+        lambda_dis = 1e-5  # l2 loss regulation weight for the discriminator
+        num_examples2gen = 20  # number of samples for the generator
+        max_iter_gen = 30  # number of inner loops for the generator
+        max_iter_dis = 30  # number of inner loops for the discriminator
+        display_interval = 30  # sample new nodes for the discriminator for every dis_interval iterations
+        update_ratio = 1  # updating ratio when choose the trees
+        window_size = 2
         """
+
+        self.num_examples2gen = num_examples2gen
+        self.lambda_dis = lambda_dis
+        self.lambda_gen = lambda_gen
+        self.update_ratio = update_ratio
+        self.max_iter_gen = max_iter_gen
+        self.max_iter_dis = max_iter_dis
+        self.window_size = window_size
+        self.display_interval = display_interval
 
         if dimension_size < 2:
             dimension_size = 50
         self.dimension_size = dimension_size
 
-        if num_examples2gen < 2:
-            num_examples2gen = 20
-        self.num_examples2gen = num_examples2gen
-
-        if update_ratio <= 0:
-            update_ratio = 1
-        self.update_ratio = update_ratio
-
-        if window_size <= 0:
-            window_size = 2
-        self.window_size = window_size
-
         if num_subsamples < 100:
-            num_subsamples = 10000
+            num_subsamples = 100
         self.num_subsamples = num_subsamples
 
         if num_clusters < 1:
@@ -142,18 +100,6 @@ class GANStratification(object):
         if sigma < 0.0:
             sigma = 2
         self.sigma = sigma
-
-        if swap_probability < 0.0:
-            swap_probability = 0.1
-        self.swap_probability = swap_probability
-
-        if threshold_proportion < 0.0:
-            threshold_proportion = 0.1
-        self.threshold_proportion = threshold_proportion
-
-        if decay < 0.0:
-            decay = 0.1
-        self.decay = decay
 
         self.shuffle = shuffle
 
@@ -169,29 +115,13 @@ class GANStratification(object):
             num_epochs = 100
         self.num_epochs = num_epochs
 
-        if max_iter_dis <= 0:
-            max_iter_dis = 30
-        self.max_iter_dis = max_iter_dis
-
-        if max_iter_gen <= 0:
-            max_iter_gen = 30
-        self.max_iter_gen = max_iter_gen
-
-        if lambda_gen <= 0.0:
-            lambda_gen = 1e-5
-        self.lambda_gen = lambda_gen
-
-        if lambda_dis <= 0.0:
-            lambda_dis = 1e-5
-        self.lambda_dis = lambda_dis
+        if num_epochs <= 0:
+            num_epochs = 5
+        self.num_epochs = num_epochs
 
         if lr <= 0.0:
             lr = 0.0001
         self.lr = lr
-
-        if display_interval <= 0:
-            display_interval = 30
-        self.display_interval = display_interval
 
         if num_jobs <= 0:
             num_jobs = 2
@@ -208,28 +138,13 @@ class GANStratification(object):
         print(desc)
 
         argdict = dict()
-        argdict.update({'dimension_size': 'The dimension size of embeddings: {0}'.format(self.dimension_size)})
-        argdict.update({'num_examples2gen': 'The number of samples for the generator.: {0}'.format(self.num_examples2gen)})
-        argdict.update({'num_subsamples': 'Subsampling input size: {0}'.format(self.num_subsamples)})
-        argdict.update({'num_clusters': 'Number of communities: {0}'.format(self.num_clusters)})
-        argdict.update({'sigma': 'Constant that scales the amount of '
-                                 'laplacian norm regularization: {0}'.format(self.sigma)})
-        argdict.update({'update_ratio': 'Updating ratio when choose the trees: {0}'.format(self.display_interval)})
-        argdict.update({'window_size': 'Window size to skip.: {0}'.format(self.window_size)})
-        argdict.update({'swap_probability': 'A hyper-parameter: {0}'.format(self.swap_probability)})
-        argdict.update({'threshold_proportion': 'A hyper-parameter: {0}'.format(self.threshold_proportion)})
-        argdict.update({'decay': 'A hyper-parameter: {0}'.format(self.decay)})
+        argdict.update({'num_clusters': 'Number of clusters to form: {0}'.format(self.num_clusters)})
         argdict.update({'shuffle': 'Shuffle the dataset? {0}'.format(self.shuffle)})
         argdict.update({'split_size': 'Split size: {0}'.format(self.split_size)})
         argdict.update({'batch_size': 'Number of examples to use in '
                                       'each iteration: {0}'.format(self.batch_size)})
         argdict.update({'num_epochs': 'Number of loops over training set: {0}'.format(self.num_epochs)})
-        argdict.update({'max_iter_gen': 'The number of inner loops for the generator: {0}'.format(self.max_iter_gen)})
-        argdict.update({'max_iter_dis': 'The number of inner loops for the discriminator: {0}'.format(self.max_iter_dis)})
-        argdict.update({'lambda_gen': 'The l2 loss regulation weight for the generator: {0}'.format(self.lambda_gen)})
-        argdict.update({'lambda_dis': 'The l2 loss regulation weight for the discriminator: {0}'.format(self.lambda_dis)})
         argdict.update({'lr': 'Learning rate: {0}'.format(self.lr)})
-        argdict.update({'display_interval': 'Sample new nodes for the discriminator for every dis_interval iterations: {0}'.format(self.display_interval)})
         argdict.update({'num_jobs': 'Number of parallel workers: {0}'.format(self.num_jobs)})
 
         for key, value in kwargs.items():
@@ -240,20 +155,6 @@ class GANStratification(object):
         args = [str(item[0] + 1) + '. ' + item[1] for item in zip(list(range(len(args))), args)]
         args = '\n\t\t'.join(args)
         print('\t>> The following arguments are applied:\n\t\t{0}'.format(args), file=sys.stderr)
-
-    def __save_embeddings(self, generator, discriminator):
-        """write embeddings of the generator and the discriminator to files"""
-
-        modes = [generator, discriminator]
-        emb_filenames = [os.path.join(RESULT_PATH, "generator.txt"), os.path.join(RESULT_PATH, "discriminator.txt")]
-        for i in range(2):
-            embedding_matrix = modes[i].layers[1].embeddings
-            embedding_list = embedding_matrix.numpy().tolist()
-            embedding_str = [str(idx) + "\t" + "\t".join([str(x) for x in emb[1:]]) + "\n"
-                             for idx, emb in enumerate(embedding_list)]
-            with open(emb_filenames[i], "w+") as f:
-                lines = [str(len(embedding_list)) + "\t" + str(self.dimension_size) + "\n"] + embedding_str
-                f.writelines(lines)
 
     def __normalize_laplacian(self, A, return_adj=False, norm_adj=False):
         """Normalize graph Laplacian matrix.
@@ -292,6 +193,45 @@ class GANStratification(object):
             D = __scale_diagonal(D=D) / self.sigma
             return D.dot(L.dot(D))
 
+    def __parallel_split(self, examples, check_list):
+        """Online or batch based strategy to splitting multi-label dataset
+        into train and test subsets.
+
+        Parameters
+        ----------
+        examples : a list containing indices of label dataset.
+
+        check_list : a list holding long term data indices that were included
+                     in the ongoing data split process (either train or test data).
+
+        Returns
+        -------
+        data partition : two lists of the resulted split data
+        """
+
+        temp_dict = dict({0: list(), 1: list()})
+        examples_batch = [i for i in examples if i not in check_list]
+        if self.shuffle:
+            random.shuffle(examples_batch)
+        sample_size = len(examples_batch)
+        if sample_size == 0:
+            return sorted(temp_dict[0]), sorted(temp_dict[1])
+        else:
+            check_list.extend(examples_batch)
+            if sample_size > 0:
+                j = round(sample_size * self.split_size)
+                for k in range(2):
+                    temp = temp_dict[k] + examples_batch[:j]
+                    temp = list(set(temp))
+                    temp_dict.update({k: temp})
+                    examples_batch = examples_batch[j:]
+                    del temp
+            else:
+                temp = temp_dict[0] + examples_batch
+                temp = list(set(temp))
+                temp_dict.update({0: temp})
+        return sorted(temp_dict[0]), sorted(temp_dict[1])
+
     def __parallel_build_trees(self, trees, root, graph):
         trees[root] = {}
         trees[root][root] = [root]
@@ -325,6 +265,9 @@ class GANStratification(object):
 
     def __build_layers(self, num_nodes, name="generator"):
         """initializing the generator
+
+        Args:
+            embeddings:
         """
         bound = 1.0 / math.sqrt(self.dimension_size)
         embeddings_initializer = tf.keras.initializers.truncated_normal(mean=0, stddev=bound,
@@ -473,6 +416,9 @@ class GANStratification(object):
 
     def __sample_discriminator(self, weight_score, root_nodes, graph, trees):
         """generate positive and negative samples for the discriminator, and record them in the txt file
+
+        Args:
+            model:
         """
         center_nodes = list()
         neighbor_nodes = list()
@@ -559,21 +505,20 @@ class GANStratification(object):
             else:
                 print(desc, end="\r")
 
-    def fit(self, X, y, use_extreme: bool = False):
+    def fit(self, X, y):
         """Split multi-label y dataset into train and test subsets.
 
         Parameters
         ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_features).
+        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+            Matrix `X`.
 
-        y : {array-like, sparse matrix} of shape (n_samples, n_labels).
-
-        use_extreme : whether to apply stratification for extreme
-        multi-label datasets.
+        y : {array-like, sparse matrix} of shape (n_samples, n_labels)
+            Matrix `y`.
 
         Returns
         -------
-        data partition : two lists of indices representing the resulted data split
+        data partition : two lists of the resulted data split
         """
 
         check, X = check_type(X, False)
@@ -605,31 +550,29 @@ class GANStratification(object):
             root_nodes = [i for i in range(num_labels)]
             trees = self.__build_trees(nodes=root_nodes, graph=graph)
 
-            desc = '\t>> Building GAN model...'
-            print(desc)
-            generator = self.__build_layers(num_nodes=num_labels, name="generator")
-            discriminator = self.__build_layers(num_nodes=num_labels, name="discriminator")
+        desc = '\t>> Building GAN model...'
+        print(desc)
+        generator = self.__build_layers(num_nodes=num_labels, name="generator")
+        discriminator = self.__build_layers(num_nodes=num_labels, name="discriminator")
 
-            checkpoint_prefix = os.path.join(LOG_PATH, "gan2split_ckpt")
-            checkpoint = tf.train.Checkpoint(generator_optimizer=self.__optimizer(),
-                                             discriminator_optimizer=self.__optimizer(),
-                                             generator=generator,
-                                             discriminator=discriminator)
+        checkpoint_prefix = os.path.join(LOG_PATH, "gan2split_ckpt")
+        checkpoint = tf.train.Checkpoint(generator_optimizer=self.__optimizer(),
+                                         discriminator_optimizer=self.__optimizer(),
+                                         generator=generator,
+                                         discriminator=discriminator)
 
-            desc = '\t\t--> Training GAN model...'
-            print(desc)
-            self.__train_gan(generator=generator, discriminator=discriminator, root_nodes=root_nodes, graph=graph,
-                             trees=trees, checkpoint=checkpoint, checkpoint_prefix=checkpoint_prefix)
-            self.__save_embeddings(generator=generator, discriminator=discriminator)
-            del generator
+        desc = '\t\t--> Training GAN model...'
+        print(desc)
+        self.__train_gan(generator=generator, discriminator=discriminator, root_nodes=root_nodes, graph=graph,
+                         trees=trees, checkpoint=checkpoint, checkpoint_prefix=checkpoint_prefix)
+        self.__save_embeddings(generator=generator, discriminator=discriminator)
 
+        if not self.is_fit:
             desc = '\t>> Extracting clusters...'
             print(desc)
             # Construct graph
-            _, self.clusters_labels = kmeans2(data=discriminator.weights[0].numpy(), k=self.num_clusters,
-                                              iter=self.num_epochs, minit='++')
-            del discriminator
-
+            idx = np.random.choice(a=list(range(num_examples)), size=self.num_subsamples, replace=True)
+            self.clusters_labels = self.__cluster_generation(y[idx])
         mlb = LabelBinarizer(labels=list(range(self.num_clusters)))
         y = mlb.reassign_labels(y, mapping_labels=self.clusters_labels)
         self.is_fit = True
@@ -647,11 +590,24 @@ class GANStratification(object):
             train_list, test_list = naive.fit(y=y)
         return train_list, test_list
 
+    def __save_embeddings(self, generator, discriminator):
+        """write embeddings of the generator and the discriminator to files"""
+
+        modes = [generator, discriminator]
+        emb_filenames = [os.path.join(RESULT_PATH, "generator.txt"), os.path.join(RESULT_PATH, "discriminator.txt")]
+        for i in range(2):
+            embedding_matrix = modes[i].layers[1].embeddings
+            embedding_list = embedding_matrix.numpy().tolist()
+            embedding_str = [str(idx) + "\t" + "\t".join([str(x) for x in emb[1:]]) + "\n"
+                             for idx, emb in enumerate(embedding_list)]
+            with open(emb_filenames[i], "w+") as f:
+                lines = [str(len(embedding_list)) + "\t" + str(self.dimension_size) + "\n"] + embedding_str
+                f.writelines(lines)
+
 
 if __name__ == "__main__":
     X_name = "Xbirds_train.pkl"
     y_name = "Ybirds_train.pkl"
-    use_extreme = True
 
     file_path = os.path.join(DATASET_PATH, y_name)
     with open(file_path, mode="rb") as f_in:
@@ -666,12 +622,9 @@ if __name__ == "__main__":
 
     st = GANStratification(num_clusters=5, shuffle=True, split_size=0.8, batch_size=100, num_epochs=1, lr=0.0001,
                            num_jobs=2)
-    training_idx, test_idx = st.fit(X=X, y=y, use_extreme=use_extreme)
-    training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx],
-                                   use_extreme=use_extreme)
+    training_set, test_set = st.fit(X=X, y=y)
+    training_set, dev_set = st.fit(X=X[training_set], y=y[training_set])
 
-    print("\n{0}".format(60 * "-"))
-    print("## Summary...")
-    print("\t>> Training set size: {0}".format(len(training_idx)))
-    print("\t>> Validation set size: {0}".format(len(dev_idx)))
-    print("\t>> Test set size: {0}".format(len(test_idx)))
+    print("training set size: {0}".format(len(training_set)))
+    print("validation set size: {0}".format(len(dev_set)))
+    print("test set size: {0}".format(len(test_set)))

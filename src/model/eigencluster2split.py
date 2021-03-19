@@ -38,7 +38,7 @@ class ClusteringEigenStratification(object):
         num_clusters : int, default=5
             The number of communities to form. It should be greater than 1.
 
-        sigma : float, default=2
+        sigma : float, default=2.0
             Scaling component to the graph degree matrix.
             It should be greater than 0.
 
@@ -147,20 +147,20 @@ class ClusteringEigenStratification(object):
         args = '\n\t\t'.join(args)
         print('\t>> The following arguments are applied:\n\t\t{0}'.format(args), file=sys.stderr)
 
-    def __cluster_generation(self, X):
+    def __cluster_generation(self, y):
         """Clustering labels after constructing graph adjacency matrix empirically.
 
         Parameters
         ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_labels)
-            Matrix `X`.
+        y : {array-like, sparse matrix} of shape (n_samples, n_labels)
+            Matrix `y`.
 
         Returns
         -------
         clusters labels : a list of clusters defining a cluster to a label association
         """
 
-        A = X.T.dot(X)
+        A = y.T.dot(y)
         A = normalize_laplacian(A=A, sigma=self.sigma, return_adj=False, norm_adj=False)
         _, V = linalg.eigh(A.toarray())
         V = V[:, -self.num_clusters:]
@@ -231,7 +231,7 @@ class ClusteringEigenStratification(object):
 if __name__ == "__main__":
     X_name = "Xbirds_train.pkl"
     y_name = "Ybirds_train.pkl"
-    use_extreme = False
+    use_extreme = True
 
     file_path = os.path.join(DATASET_PATH, y_name)
     with open(file_path, mode="rb") as f_in:

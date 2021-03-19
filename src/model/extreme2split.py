@@ -13,7 +13,7 @@ import warnings
 import numpy as np
 
 from src.utility.file_path import DATASET_PATH
-from src.utility.utils import check_type, LabelBinarizer
+from src.utility.utils import check_type, custom_shuffle, LabelBinarizer
 
 random.seed(12345)
 
@@ -241,9 +241,13 @@ class ExtremeStratification(object):
         if num_labels == 1:
             # transform it to multi-label data
             classes = list(set([i[0] if i else 0 for i in X.data]))
-            num_labels = len(classes)
             mlb = LabelBinarizer(labels=classes)
             X = mlb.transform(X)
+
+        if self.shuffle:
+            sample_idx = custom_shuffle(num_examples)
+            X = X[sample_idx, :]
+            y = y[sample_idx, :]
 
         # Keep track how how many instances have been swapped to train or test
         swap_counter = {'to_train': 0, 'to_test': 0}

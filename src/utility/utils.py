@@ -1,3 +1,5 @@
+import random
+
 import numpy as np
 from scipy.sparse import lil_matrix, issparse, eye
 
@@ -67,6 +69,12 @@ def softmax(x):
     e_x = np.exp(x - np.max(x))  # for computation stability
     temp = e_x / e_x.sum()
     return temp.tolist()
+
+
+def custom_shuffle(num_samples):
+    idx = list(range(num_samples))
+    random.shuffle(idx)
+    return idx
 
 
 class LabelBinarizer(object):

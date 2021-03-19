@@ -12,27 +12,32 @@ import sys
 import time
 import warnings
 
-import igraph
 import numpy as np
-from scipy.sparse import triu, lil_matrix
+from joblib import Parallel, delayed
+from scipy.sparse import lil_matrix
+from scipy.sparse import triu
 from sklearn.metrics.pairwise import cosine_similarity
 
-from src.model.extreme2split import ExtremeStratification
-from src.model.naive2split import NaiveStratification
 from src.utility.file_path import DATASET_PATH
-from src.utility.utils import check_type, custom_shuffle, normalize_laplacian, LabelBinarizer
+from src.utility.utils import check_type, LabelBinarizer
+from src.utility.utils import custom_shuffle, normalize_laplacian
 
+EPSILON = np.finfo(np.float).eps
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
 
 
-class LabelEnhancementStratification(object):
-    def __init__(self, num_subsamples: int = 10000, num_communities: int = 5, walk_size: int = 4,
-                 sigma: float = 2, alpha: float = 0.2, swap_probability: float = 0.1,
+class ActiveStratification(object):
+
+    def __init__(self, subsample_input_size=0.3, subsample_labels_size=50, calc_ads=True,
+                 acquisition_type="variation", top_k=20, ads_percent=0.7, tol_labels_iter=10,
+                 delay_factor=1.0, forgetting_rate=0.9, num_subsamples: int = 10000,
+                 num_communities: int = 5, walk_size: int = 4, sigma: float = 2,
+                 alpha: float = 0.2, swap_probability: float = 0.1,
                  threshold_proportion: float = 0.1, decay: float = 0.1, shuffle: bool = True,
-                 split_size: float = 0.75, batch_size: int = 100, num_epochs: int = 50,
-                 num_jobs: int = 2):
-        """Label enhancement based stratified based multi-label data splitting.
+                 split_size: float = 0.75, batch_size: int = 100, max_inner_iter=100,
+                 num_epochs: int = 50, num_jobs: int = 2):
+        """Community based stratified based multi-label data splitting.
 
         Parameters
         ----------
@@ -83,6 +88,17 @@ class LabelEnhancementStratification(object):
             The number of parallel jobs to run for splitting.
             ``-1`` means using all processors.
         """
+
+        self.subsample_input_size = subsample_input_size
+        self.subsample_labels_size = subsample_labels_size
+        self.calc_ads = calc_ads
+        self.ads_percent = ads_percent
+        self.acquisition_type = acquisition_type  # entropy, mutual, variation, psp
+        self.top_k = top_k
+        self.tol_labels_iter = tol_labels_iter
+        self.forgetting_rate = forgetting_rate
+        self.delay_factor = delay_factor
+        self.max_inner_iter = max_inner_iter
 
         if num_subsamples < 100:
             num_subsamples = 100
@@ -141,28 +157,16 @@ class LabelEnhancementStratification(object):
         time.sleep(2)
 
     def __print_arguments(self, **kwargs):
-        desc = "## Split multi-label data using label enhancement based approach..."
+        desc = "## Split extreme multi-label data using stratified partitioning..."
         print(desc)
 
         argdict = dict()
-        argdict.update({'num_subsamples': 'Subsampling input size: {0}'.format(self.num_subsamples)})
-        argdict.update({'num_communities': 'Number of communities: {0}'.format(self.num_communities)})
-        argdict.update({'walk_size': 'The length of random walks to perform: {0}'.format(self.walk_size)})
-        argdict.update({'sigma': 'Constant that scales the amount of '
-                                 'laplacian norm regularization: {0}'.format(self.sigma)})
-        argdict.update({'alpha': 'A hyperparameter to balancing parameter'
-                                 'which controls the fraction of the information '
-                                 'inherited from the label propagation and the '
-                                 'label matrix.: {0}'.format(self.alpha)})
-        argdict.update({'swap_probability': 'A hyper-parameter: {0}'.format(self.swap_probability)})
-        argdict.update({'threshold_proportion': 'A hyper-parameter: {0}'.format(self.threshold_proportion)})
-        argdict.update({'decay': 'A hyper-parameter: {0}'.format(self.decay)})
+        argdict.update({'swap_probability': 'A hyper-parameter: {0}'.format(self.top_k)})
+        argdict.update({'threshold_proportion': 'A hyper-parameter: {0}'.format(self.tol_labels_iter)})
+        argdict.update({'decay': 'A hyper-parameter: {0}'.format(self.delay_factor)})
         argdict.update({'shuffle': 'Shuffle the dataset? {0}'.format(self.shuffle)})
         argdict.update({'split_size': 'Split size: {0}'.format(self.split_size)})
-        argdict.update({'batch_size': 'Number of examples to use in '
-                                      'each iteration: {0}'.format(self.batch_size)})
-        argdict.update({'num_epochs': 'Number of loops over training set: {0}'.format(self.num_epochs)})
-        argdict.update({'num_jobs': 'Number of parallel workers: {0}'.format(self.num_jobs)})
+        argdict.update({'num_epochs': 'Number of loops over a dataset: {0}'.format(self.num_epochs)})
 
         for key, value in kwargs.items():
             argdict.update({key: value})
@@ -173,33 +177,55 @@ class LabelEnhancementStratification(object):
         args = '\n\t\t'.join(args)
         print('\t>> The following arguments are applied:\n\t\t{0}'.format(args), file=sys.stderr)
 
-    def __graph_construction(self, X):
-        """Clustering labels after constructing graph adjacency matrix empirically.
+    def __entropy(self, score):
+        log_prob_bag = np.log(score + EPSILON)
+        if len(score.shape) > 1:
+            entropy_ = -np.diag(np.dot(score, log_prob_bag.T))
+        else:
+            entropy_ = -np.multiply(score, log_prob_bag)
+        np.nan_to_num(entropy_, copy=False)
+        entropy_ = entropy_ + EPSILON
+        return entropy_
 
-        Parameters
-        ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_labels)
-            Matrix `X`.
+    def __mutual_information(self, H_m, H):
+        mean_entropy = np.mean(H_m, axis=0)
+        mutual_info = H - mean_entropy
+        return mutual_info
 
-        Returns
-        -------
-        community labels : a list of communities defining a community to a label association
-        """
+    def __variation_ratios(self, score, sample_idx):
+        mlb = preprocessing.MultiLabelBinarizer()
+        V = score[:, sample_idx, :]
+        V = mlb.fit_transform(V)
+        V = mlb.classes_[np.argsort(-np.sum(V, axis=0))][:self.top_k]
+        total_sum = np.intersect1d(score[0, sample_idx], V).shape[0]
+        D = 1 - total_sum / self.top_k
+        return D
 
-        A = X.T.dot(X)
-        A = normalize_laplacian(A=A, sigma=self.sigma, return_adj=True, norm_adj=True)
-        A = triu(A)
-        # Create the graph
-        vertices = [i for i in range(A.shape[0])]
-        edges = list(zip(*A.nonzero()))
-        weight = A.data.tolist()
-        g = igraph.Graph(vertex_attrs={"label": vertices}, edges=edges)
-        g = g.community_walktrap(weights=weight, steps=self.walk_size)
-        communities = g.as_clustering(n=self.num_communities)
-        communities = np.array(communities.membership)
-        return communities
+    def __psp(self, score, samples_idx, y_true):
+        num_labels = y_true.shape[1]
 
-    def fit(self, X, y, use_extreme: bool = False):
+        # propensity of all labels
+        N_j = y_true[samples_idx].toarray()
+        labels_sum = np.sum(N_j, axis=0)
+        g = 1 / (labels_sum + 1)
+        psp_label = 1 / (1 + g)
+
+        # retrieve the top k labels
+        top_k = y_true.shape[1] if self.top_k > num_labels else self.top_k
+        labels_idx = np.argsort(-score)[:, :top_k]
+
+        # compute normalized psp@k
+        psp = N_j / psp_label
+        tmp = [psp[s_idx, labels_idx[s_idx]] for s_idx in np.arange(psp.shape[0])]
+        psp = (1 / top_k) * np.sum(tmp, axis=1)
+        min_psp = np.min(psp) + EPSILON
+        max_psp = np.max(psp) + EPSILON
+        psp = psp - min_psp
+        psp = psp / (max_psp - min_psp)
+        psp = 1 - psp + EPSILON
+        return psp
+
+    def fit(self, X, y, use_extreme, score, samples_idx):
         """Split multi-label y dataset into train and test subsets.
 
         Parameters
@@ -254,19 +280,41 @@ class LabelEnhancementStratification(object):
         y = mlb.reassign_labels(y, mapping_labels=self.community_labels)
         self.is_fit = True
 
-        # perform splitting
-        if use_extreme:
-            extreme = ExtremeStratification(swap_probability=self.swap_probability,
-                                            threshold_proportion=self.threshold_proportion, decay=self.decay,
-                                            shuffle=self.shuffle, split_size=self.split_size,
-                                            num_epochs=self.num_epochs, verbose=False)
-            train_list, test_list = extreme.fit(X=X, y=y)
+        parallel = Parallel(n_jobs=self.num_jobs, prefer="threads", verbose=0)
+        if self.acquisition_type == "entropy":
+            models_entropy = np.array([np.mean(score[samples_idx == idx], axis=(0)) for idx in np.unique(samples_idx)])
+            H = self.__entropy(score=models_entropy)
+        elif self.acquisition_type == "mutual":
+            models_entropy = np.array([np.mean(score[samples_idx == idx], axis=(0)) for idx in np.unique(samples_idx)])
+            H = self.__entropy(score=models_entropy)
+            results = parallel(delayed(self.__entropy)(score[model_idx], model_idx)
+                               for model_idx in np.arange(self.num_models))
+            H_m = np.vstack(zip(*results))
+            H_m = np.array([[H_m[np.argwhere(samples_idx[m] == s_idx)[0][0], m]
+                             if s_idx in samples_idx[m] else EPSILON for idx, s_idx in
+                             enumerate(np.unique(samples_idx))]
+                            for m in np.arange(self.num_models)]).T
+            H = self.__mutual_information(H_m=H_m.T, H=H, model_idx=self.num_models - 1)
+        elif self.acquisition_type == "variation":
+            labels = self.num_labels
+            score = np.array([[[score[m][np.argwhere(samples_idx[m] == s_idx)[0][0], l_idx]
+                                if s_idx in samples_idx[m] else EPSILON
+                                for l_idx in np.arange(labels)]
+                               for idx, s_idx in enumerate(np.unique(samples_idx))]
+                              for m in np.arange(self.num_models)])
+            num_samples = score.shape[1]
+            score = np.argsort(-score)[:, :, :self.top_k]
+            results = parallel(delayed(self.__variation_ratios)(score, sample_idx, num_samples)
+                               for sample_idx in np.arange(num_samples))
+            H = np.vstack(results).reshape(num_samples, )
         else:
-            naive = NaiveStratification(shuffle=self.shuffle, split_size=self.split_size,
-                                        batch_size=self.batch_size,
-                                        num_jobs=self.num_jobs, verbose=False)
-            train_list, test_list = naive.fit(y=y)
-        return train_list, test_list
+            results = parallel(delayed(self.__psp)(score[model_idx], model_idx,
+                                                   samples_idx[model_idx], y_true)
+                               for model_idx in np.arange(self.num_models))
+            H = np.hstack(zip(*results))
+            samples_idx = np.hstack(samples_idx)
+            H = np.array([np.mean(H[samples_idx == idx]) for idx in np.unique(samples_idx)])
+        return H
 
 
 if __name__ == "__main__":
@@ -284,11 +332,11 @@ if __name__ == "__main__":
     with open(file_path, mode="rb") as f_in:
         X = pkl.load(f_in)
         X = X[idx]
-
-    st = LabelEnhancementStratification(num_subsamples=10000, num_communities=5, walk_size=5, sigma=2, alpha=0.3,
-                                        shuffle=True, split_size=0.8, batch_size=100, num_jobs=10)
+    # shuffle = True, split_size = 0.8, batch_size = 1000, num_jobs = 10
+    st = ActiveStratification(shuffle=True, split_size=0.8, batch_size=100, num_epochs=5, num_jobs=2)
     training_idx, test_idx = st.fit(X=X, y=y, use_extreme=use_extreme)
-    training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx], use_extreme=use_extreme)
+    training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx],
+                                   use_extreme=use_extreme)
 
     print("\n{0}".format(60 * "-"))
     print("## Summary...")

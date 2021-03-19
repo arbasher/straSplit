@@ -23,7 +23,7 @@ class Trainer:
     def save(self, directory):
         saver = tf.train.Saver()
 
-        dirs = directory.fit()
+        dirs = directory.fit(None, )
         dirs = ['/'.join(dirs[:i]) for i in range(1, len(dirs) + 1)]
         mkdirs = [d for d in dirs if not os.path.exists(d)]
 
