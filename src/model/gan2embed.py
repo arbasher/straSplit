@@ -32,9 +32,9 @@ logger.setLevel(logging.FATAL)
 
 class GAN2Embed(object):
     def __init__(self, dimension_size: int = 50, num_examples2gen=20, update_ratio=1, window_size=2,
-                 shuffle: bool = True, batch_size: int = 100, num_epochs: int = 5, max_iter_gen=30, max_iter_dis=30,
-                 lambda_gen=1e-5, lambda_dis=1e-5, lr: float = 1e-3, display_interval=30, num_jobs: int = 2,
-                 verbose: bool = True):
+                 shuffle: bool = True, batch_size: int = 100, num_epochs: int = 5, max_iter_gen=30,
+                 max_iter_dis=30, lambda_gen=1e-5, lambda_dis=1e-5, lr: float = 1e-3,
+                 display_interval: int = 30, num_jobs: int = 2, verbose: bool = True):
 
         """Clustering based stratified based multi-label data splitting.
 
@@ -83,7 +83,8 @@ class GAN2Embed(object):
             Learning rate.
 
         display_interval : int, default=30
-            Sample new nodes for the discriminator for every dis_interval iterations.
+            Sample new nodes for the discriminator for every display
+            interval iterations.
 
         num_jobs : int, default=2
             The number of parallel jobs to run for splitting.
@@ -202,7 +203,7 @@ class GAN2Embed(object):
                 lines = [str(len(embedding_list)) + "\t" + str(self.dimension_size) + "\n"] + embedding_str
                 f.writelines(lines)
 
-    def __parallel_build_trees(self, trees, root, graph):
+    def __build_trees(self, trees, root, graph):
         trees[root] = {}
         trees[root][root] = [root]
         used_nodes = set()
@@ -217,7 +218,7 @@ class GAN2Embed(object):
                     queue.append(sub_node)
                     used_nodes.add(sub_node)
 
-    def __build_trees(self, nodes, graph=None):
+    def __parallel_build_trees(self, nodes, graph=None):
         """use BFS algorithm to construct the BFS-trees
 
         Args:
@@ -229,7 +230,7 @@ class GAN2Embed(object):
 
         trees = {}
         parallel = Parallel(n_jobs=self.num_jobs, prefer="threads", verbose=0)
-        parallel(delayed(self.__parallel_build_trees)(trees, root, graph)
+        parallel(delayed(self.__build_trees)(trees, root, graph)
                  for root in tqdm.tqdm(nodes))
         return trees
 
@@ -493,7 +494,7 @@ class GAN2Embed(object):
         # construct BFS-trees
         graph = {i: list(adjacency[i].nonzero()[1]) for i in range(num_nodes)}
         root_nodes = [i for i in range(num_nodes)]
-        trees = self.__build_trees(nodes=root_nodes, graph=graph)
+        trees = self.__parallel_build_trees(nodes=root_nodes, graph=graph)
 
         desc = '\t>> Building GAN model...'
         print(desc)

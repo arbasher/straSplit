@@ -75,8 +75,6 @@ class NaiveStratification(object):
     def __print_arguments(self, **kwargs):
         desc = "## Configuration parameters to naive based stratified multi-label " \
                "dataset splitting:"
-        print(desc)
-
         argdict = dict()
         argdict.update({'shuffle': 'Shuffle the dataset? {0}'.format(self.shuffle)})
         argdict.update({'split_size': 'Split size: {0}'.format(self.split_size)})
@@ -94,7 +92,7 @@ class NaiveStratification(object):
         print(textwrap.TextWrapper(width=75, subsequent_indent='   ').fill(desc), file=sys.stderr)
         print('\t\t{0}'.format(args), file=sys.stderr)
 
-    def __parallel_split(self, examples, check_list):
+    def __split(self, examples, check_list):
         """Online or batch based strategy to splitting multi-label dataset
         into train and test subsets.
 
@@ -145,6 +143,9 @@ class NaiveStratification(object):
         data partition : two lists of indices representing the resulted data split
         """
 
+        if y is None:
+            raise Exception("Please provide labels for the dataset.")
+
         check, y = check_type(X=y, return_list=False)
         if not check:
             tmp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
@@ -172,8 +173,8 @@ class NaiveStratification(object):
             if len(examples) == 0:
                 continue
             list_batches = np.arange(start=0, stop=len(examples), step=self.batch_size)
-            results = parallel(delayed(self.__parallel_split)(examples[batch_idx:batch_idx + self.batch_size],
-                                                              check_list)
+            results = parallel(delayed(self.__split)(examples[batch_idx:batch_idx + self.batch_size],
+                                                     check_list)
                                for idx, batch_idx in enumerate(list_batches))
             desc = '\t\t--> Splitting progress: {0:.2f}%...'.format(((label_idx + 1) / num_labels) * 100)
             if label_idx + 1 == num_labels:

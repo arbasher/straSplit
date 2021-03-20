@@ -1,11 +1,10 @@
 numpy
-pandas
 scikit-learn
 scipy
 sklearn
-networkx
-community
-plotly
-squarify
-matplotlib
 altair
+textwrap
+joblib
+tensorflow
+tqdm
+igraph

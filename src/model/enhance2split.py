@@ -144,7 +144,6 @@ class LabelEnhancementStratification(object):
     def __print_arguments(self, **kwargs):
         desc = "## Configuration parameters to stratifying a multi-label " \
                "dataset splitting based on label enhancement approach:"
-        print(desc)
 
         argdict = dict()
         argdict.update({'num_subsamples': 'Subsampling input size: {0}'.format(self.num_subsamples)})
@@ -219,6 +218,12 @@ class LabelEnhancementStratification(object):
         data partition : two lists of indices representing the resulted data split
         """
 
+        if X is None:
+            raise Exception("Please provide a dataset.")
+        if y is None:
+            raise Exception("Please provide labels for the dataset.")
+        assert X.shape[0] == y.shape[0]
+
         check, X = check_type(X=X, return_list=False)
         if not check:
             tmp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
@@ -242,7 +247,7 @@ class LabelEnhancementStratification(object):
             print(desc)
             # Construct graph
             if self.shuffle:
-                sample_idx = custom_shuffle(num_examples)
+                sample_idx = custom_shuffle(num_examples=num_examples)
                 X = X[sample_idx, :]
                 y = y[sample_idx, :]
             P = lil_matrix(cosine_similarity(X=X))
@@ -288,8 +293,9 @@ if __name__ == "__main__":
         X = pkl.load(f_in)
         X = X[idx]
 
-    st = LabelEnhancementStratification(num_subsamples=10000, num_communities=5, walk_size=5, sigma=2, alpha=0.3,
-                                        shuffle=True, split_size=0.8, batch_size=100, num_jobs=10)
+    st = LabelEnhancementStratification(num_subsamples=10000, num_communities=5, walk_size=4, sigma=2, alpha=0.2,
+                                        swap_probability=0.1, threshold_proportion=0.1, decay=0.1, shuffle=True,
+                                        split_size=0.75, batch_size=100, num_epochs=50, num_jobs=2)
     training_idx, test_idx = st.fit(X=X, y=y, use_extreme=use_extreme)
     training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx], use_extreme=use_extreme)
 

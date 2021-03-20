@@ -71,8 +71,8 @@ def softmax(x):
     return temp.tolist()
 
 
-def custom_shuffle(num_samples):
-    idx = list(range(num_samples))
+def custom_shuffle(num_examples):
+    idx = list(range(num_examples))
     random.shuffle(idx)
     return idx
 

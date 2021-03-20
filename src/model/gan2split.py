@@ -31,11 +31,12 @@ logger.setLevel(logging.FATAL)
 
 
 class GANStratification(object):
-    def __init__(self, dimension_size: int = 50, num_examples2gen=20, update_ratio=1, window_size=2,
-                 num_subsamples: int = 10000, num_clusters: int = 5, sigma: float = 2, swap_probability: float = 0.1,
-                 threshold_proportion: float = 0.1, decay: float = 0.1, shuffle: bool = True, split_size: float = 0.75,
-                 batch_size: int = 100, num_epochs: int = 5, max_iter_gen=30, max_iter_dis=30, lambda_gen=1e-5,
-                 lambda_dis=1e-5, lr: float = 1e-3, display_interval=30, num_jobs: int = 2):
+    def __init__(self, dimension_size: int = 50, num_examples2gen: int = 20, update_ratio: int = 1,
+                 window_size: int = 2, num_subsamples: int = 10000, num_clusters: int = 5, sigma: float = 2,
+                 swap_probability: float = 0.1, threshold_proportion: float = 0.1, decay: float = 0.1,
+                 shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100, max_iter_gen: int = 30,
+                 max_iter_dis: int = 30, num_epochs: int = 5, lambda_gen: float = 1e-5, lambda_dis: float = 1e-5,
+                 lr: float = 1e-3, display_interval=30, num_jobs: int = 2):
 
         """Clustering based stratified based multi-label data splitting.
 
@@ -85,14 +86,14 @@ class GANStratification(object):
             It should be a positive integer and represents the size of
             batch during splitting process.
 
-        num_epochs : int, default=50
-            The number of iterations of the k-means algorithm to run.
-
         max_iter_gen : int, default=30
             The number of inner loops for the generator.
 
         max_iter_dis : int, default=30
             The number of inner loops for the discriminator.
+
+        num_epochs : int, default=50
+            The number of iterations of the k-means algorithm to run.
 
         lambda_gen : float, default=1e-5
             The l2 loss regulation weight for the generator.
@@ -104,7 +105,7 @@ class GANStratification(object):
             Learning rate.
 
         display_interval : int, default=30
-            Sample new nodes for the discriminator for every dis_interval iterations.
+            Sample new nodes for the discriminator for every display interval iterations.
 
         num_jobs : int, default=2
             The number of parallel jobs to run for splitting.
@@ -161,10 +162,6 @@ class GANStratification(object):
             batch_size = 100
         self.batch_size = batch_size
 
-        if num_epochs <= 0:
-            num_epochs = 100
-        self.num_epochs = num_epochs
-
         if max_iter_dis <= 0:
             max_iter_dis = 30
         self.max_iter_dis = max_iter_dis
@@ -172,6 +169,10 @@ class GANStratification(object):
         if max_iter_gen <= 0:
             max_iter_gen = 30
         self.max_iter_gen = max_iter_gen
+
+        if num_epochs <= 0:
+            num_epochs = 100
+        self.num_epochs = num_epochs
 
         if lambda_gen <= 0.0:
             lambda_gen = 1e-5
@@ -221,17 +222,19 @@ class GANStratification(object):
         argdict.update({'split_size': 'Split size: {0}'.format(self.split_size)})
         argdict.update({'batch_size': 'Number of examples to use in '
                                       'each iteration: {0}'.format(self.batch_size)})
+        argdict.update({'max_iter_gen': 'The number of inner loops for the '
+                                        'generator: {0}'.format(self.max_iter_gen)})
+        argdict.update({'max_iter_dis': 'The number of inner loops for the '
+                                        'discriminator: {0}'.format(self.max_iter_dis)})
         argdict.update({'num_epochs': 'Number of loops over training set: {0}'.format(self.num_epochs)})
-        argdict.update({'max_iter_gen': 'The number of inner loops for the generator: {0}'.format(self.max_iter_gen)})
-        argdict.update(
-            {'max_iter_dis': 'The number of inner loops for the discriminator: {0}'.format(self.max_iter_dis)})
-        argdict.update({'lambda_gen': 'The l2 loss regulation weight for the generator: {0}'.format(self.lambda_gen)})
-        argdict.update(
-            {'lambda_dis': 'The l2 loss regulation weight for the discriminator: {0}'.format(self.lambda_dis)})
+        argdict.update({'lambda_gen': 'The l2 loss regulation weight for '
+                                      'the generator: {0}'.format(self.lambda_gen)})
+        argdict.update({'lambda_dis': 'The l2 loss regulation weight for '
+                                      'the discriminator: {0}'.format(self.lambda_dis)})
         argdict.update({'lr': 'Learning rate: {0}'.format(self.lr)})
-        argdict.update({
-            'display_interval': 'Sample new nodes for the discriminator for every dis_interval iterations: {0}'.format(
-                self.display_interval)})
+        argdict.update({'display_interval': 'Sample new nodes for the '
+                                            'discriminator for every '
+                                            'disinterval iterations: {0}'.format(self.display_interval)})
         argdict.update({'num_jobs': 'Number of parallel workers: {0}'.format(self.num_jobs)})
 
         for key, value in kwargs.items():
@@ -298,6 +301,9 @@ class GANStratification(object):
         data partition : two lists of indices representing the resulted data split
         """
 
+        if X is None:
+            raise Exception("Please provide a dataset.")
+
         check, X = check_type(X, False)
         if not check:
             tmp = "The method only supports scipy.sparse and numpy.ndarray type of data"
@@ -308,9 +314,9 @@ class GANStratification(object):
         # check whether data is singly labeled
         if num_labels == 1:
             # transform it to multi-label data
-            classes = list(set([i[0] if i else 0 for i in X.data]))
+            classes = list(set([i[0] if i else 0 for i in y.data]))
             mlb = LabelBinarizer(labels=classes)
-            X = mlb.transform(X)
+            y = mlb.transform(y)
 
         if not self.is_fit:
             desc = '\t>> Building Graph...'
@@ -371,8 +377,10 @@ if __name__ == "__main__":
         X = pkl.load(f_in)
         X = X[idx]
 
-    st = GANStratification(num_clusters=5, shuffle=True, split_size=0.8, batch_size=100, num_epochs=1, lr=0.0001,
-                           num_jobs=2)
+    st = GANStratification(dimension_size=50, num_examples2gen=20, update_ratio=1, window_size=2, num_subsamples=10000,
+                           num_clusters=5, sigma=2, swap_probability=0.1, threshold_proportion=0.1, decay=0.1,
+                           shuffle=True, split_size=0.75, batch_size=100, max_iter_gen=30, max_iter_dis=30,
+                           num_epochs=5, lambda_gen=1e-5, lambda_dis=1e-5, lr=1e-3, display_interval=30, num_jobs=2)
     training_idx, test_idx = st.fit(X=X, y=y, use_extreme=use_extreme)
     training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx],
                                    use_extreme=use_extreme)

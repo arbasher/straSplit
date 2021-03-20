@@ -129,7 +129,6 @@ class CommunityStratification(object):
     def __print_arguments(self, **kwargs):
         desc = "## Configuration parameters to stratifying a multi-label " \
                "dataset splitting based on community detection approach:"
-        print(desc)
 
         argdict = dict()
         argdict.update({'num_subsamples': 'Subsampling input size: {0}'.format(self.num_subsamples)})
@@ -200,12 +199,17 @@ class CommunityStratification(object):
         data partition : two lists of indices representing the resulted data split
         """
 
+        if y is None:
+            raise Exception("Please provide labels for the dataset.")
+        assert X.shape[0] == y.shape[0]
         check, y = check_type(X=y, return_list=False)
         if not check:
             tmp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
             raise Exception(tmp)
 
         if use_extreme:
+            if X is None:
+                raise Exception("Please provide a dataset.")
             check, X = check_type(X=X, return_list=False)
             if not check:
                 tmp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
@@ -260,8 +264,10 @@ if __name__ == "__main__":
         X = pkl.load(f_in)
         X = X[idx]
 
-    st = CommunityStratification(num_subsamples=10000, num_communities=5, walk_size=5, sigma=2, shuffle=True,
-                                 split_size=0.8, batch_size=100, num_jobs=10)
+    st = CommunityStratification(num_subsamples=10000, num_communities=5, walk_size=4, sigma=2,
+                                 swap_probability=0.1, threshold_proportion=0.1, decay=0.1,
+                                 shuffle=True, split_size=0.75, batch_size=100, num_epochs=50,
+                                 num_jobs=2)
     training_idx, test_idx = st.fit(y=y, X=X, use_extreme=use_extreme)
     training_idx, dev_idx = st.fit(y=y[training_idx], X=X[training_idx], use_extreme=use_extreme)
 

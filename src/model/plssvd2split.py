@@ -25,8 +25,7 @@ np.seterr(divide='ignore', invalid='ignore')
 
 class ClusterStratification(object):
     def __init__(self, num_clusters: int = 20, swap_probability: float = 0.1, threshold_proportion: float = 0.1,
-                 decay: float = 0.1,
-                 shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100,
+                 decay: float = 0.1, shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100,
                  num_epochs: int = 5, lr: float = 0.0001, num_jobs: int = 2):
 
         """Clustering based stratified based multi-label data splitting.
@@ -189,6 +188,12 @@ class ClusterStratification(object):
         data partition : two lists of indices representing the resulted data split
         """
 
+        if X is None:
+            raise Exception("Please provide a dataset.")
+        if y is None:
+            raise Exception("Please provide labels for the dataset.")
+        assert X.shape[0] == y.shape[0]
+
         check, X = check_type(X=X, return_list=False)
         if not check:
             tmp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
@@ -204,9 +209,9 @@ class ClusterStratification(object):
         # check whether data is singly labeled
         if num_labels == 1:
             # transform it to multi-label data
-            classes = list(set([i[0] if i else 0 for i in X.data]))
+            classes = list(set([i[0] if i else 0 for i in y.data]))
             mlb = LabelBinarizer(labels=classes)
-            X = mlb.transform(X)
+            y = mlb.transform(y)
 
         # 1)- Compute covariance of X and y using SVD
         if not self.is_fit:
@@ -284,9 +289,9 @@ if __name__ == "__main__":
         X = pkl.load(f_in)
         X = X[idx]
 
-    st = ClusterStratification(num_clusters=5, shuffle=True, split_size=0.8,
-                               batch_size=100, num_epochs=5, lr=0.0001,
-                               num_jobs=2)
+    st = ClusterStratification(num_clusters=5, swap_probability=0.1, threshold_proportion=0.1,
+                               decay=0.1, shuffle=True, split_size=0.75, batch_size=100,
+                               num_epochs=5, lr=0.0001, num_jobs=2)
     training_idx, test_idx = st.fit(X=X, y=y, use_extreme=use_extreme)
     training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx],
                                    use_extreme=use_extreme)

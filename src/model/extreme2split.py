@@ -23,7 +23,8 @@ class ExtremeStratification(object):
 
     def __init__(self, swap_probability: float = 0.1, threshold_proportion: float = 0.1, decay: float = 0.1,
                  shuffle: bool = True, split_size: float = 0.75, num_epochs: int = 50, verbose: bool = True):
-        """Community based stratified based multi-label data splitting.
+        """Splitting a large scale multi-label data using the
+            stratification approach.
 
         Parameters
         ----------
@@ -82,12 +83,12 @@ class ExtremeStratification(object):
     def __print_arguments(self, **kwargs):
         desc = "## Configuration parameters to stratifying a large scale " \
                "multi-label dataset splitting:"
-        print(desc)
-
         argdict = dict()
-        argdict.update({'swap_probability': 'A hyper-parameter: {0}'.format(self.swap_probability)})
-        argdict.update({'threshold_proportion': 'A hyper-parameter: {0}'.format(self.threshold_proportion)})
-        argdict.update({'decay': 'A hyper-parameter: {0}'.format(self.decay)})
+        argdict.update(
+            {'swap_probability': 'A hyper-parameter for extreme stratification: {0}'.format(self.swap_probability)})
+        argdict.update({'threshold_proportion': 'A hyper-parameter for extreme stratification: {0}'.format(
+            self.threshold_proportion)})
+        argdict.update({'decay': 'A hyper-parameter for extreme stratification: {0}'.format(self.decay)})
         argdict.update({'shuffle': 'Shuffle the dataset? {0}'.format(self.shuffle)})
         argdict.update({'split_size': 'Split size: {0}'.format(self.split_size)})
         argdict.update({'num_epochs': 'Number of loops over a dataset: {0}'.format(self.num_epochs)})
@@ -151,7 +152,7 @@ class ExtremeStratification(object):
             labels_dict[label]['label_score'] = label_score
 
     # 4. Calculate the instance score for each instance in instances_dict
-    def __score_instances(self, instances_dict, labels_dict):
+    def __score_instances(self, instances_dict, labels_dict, examples_scores=None):
         for instance_id, instance_dict in instances_dict.items():
             instance_score = 0
             train_or_test = instance_dict['train_or_test']
@@ -171,7 +172,10 @@ class ExtremeStratification(object):
                         instance_score += label_score  # If instance in test, decrease score
                     else:
                         print('\t\t--> Something went wrong: {}'.format(instance_id))
-            instances_dict[instance_id]['instance_score'] = instance_score
+            temp = 0
+            if examples_scores:
+                temp = examples_scores[instance_id]
+            instances_dict[instance_id]['instance_score'] = instance_score + temp
 
     # 5. Calculate the total score
     # The higher the score, the more 'imbalanced' the distribution of labels between train and test sets
@@ -214,7 +218,7 @@ class ExtremeStratification(object):
                         instances_dict[instance_id]['train_or_test'] = 'train'
                         swap_counter['to_train'] += 1
 
-    def fit(self, X, y):
+    def fit(self, X, y, examples_scores=None):
         """Split multi-label y dataset into train and test subsets.
 
         Parameters
@@ -223,10 +227,19 @@ class ExtremeStratification(object):
 
         y : {array-like, sparse matrix} of shape (n_samples, n_labels).
 
+        examples_scores : a dictionary of shape (n_samples, 1) that contains
+            uncertainty score to each example.
+
         Returns
         -------
         data partition : two lists of indices representing the resulted data split
         """
+
+        if X is None:
+            raise Exception("Please provide a dataset.")
+        if y is None:
+            raise Exception("Please provide labels for the dataset.")
+        assert X.shape[0] == y.shape[0]
 
         check, X = check_type(X=X, return_list=False)
         if not check:
@@ -248,7 +261,7 @@ class ExtremeStratification(object):
             X = mlb.transform(X)
 
         if self.shuffle:
-            sample_idx = custom_shuffle(num_examples)
+            sample_idx = custom_shuffle(num_examples=num_examples)
             X = X[sample_idx, :]
             y = y[sample_idx, :]
 
@@ -272,7 +285,7 @@ class ExtremeStratification(object):
 
         # 5. Calculate the instance score for each instance in instances_dict
         # A high score means the instance is a good candidate for swapping
-        self.__score_instances(instances_dict, labels_dict)
+        self.__score_instances(instances_dict, labels_dict, examples_scores=examples_scores)
 
         # 6. Calculate the total score
         # The higher the score, the more 'imbalanced' the distribution of labels between train and test sets
@@ -303,7 +316,8 @@ class ExtremeStratification(object):
             self.__score_labels(labels_dict=labels_dict, average_labels_per_instance=average_labels_per_instance)
 
             # 5. Recalculate the instance score for each instance in instances_dict
-            self.__score_instances(instances_dict=instances_dict, labels_dict=labels_dict)
+            self.__score_instances(instances_dict=instances_dict, labels_dict=labels_dict,
+                                   examples_scores=examples_scores)
 
             # 6. Recalculate the total score
             total_score = self.__calculate_total_score(instances_dict=instances_dict)
@@ -342,7 +356,8 @@ if __name__ == "__main__":
         X = pkl.load(f_in)
         X = X[idx]
 
-    st = ExtremeStratification(split_size=0.8)
+    st = ExtremeStratification(swap_probability=0.1, threshold_proportion=0.1, decay=0.1,
+                               shuffle=True, split_size=0.75, num_epochs=50)
     training_idx, test_idx = st.fit(X=X, y=y)
     training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx])
 
