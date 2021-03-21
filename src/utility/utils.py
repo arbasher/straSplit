@@ -5,6 +5,7 @@ import altair as alt
 import numpy as np
 import pandas as pd
 from scipy.sparse import lil_matrix, issparse, eye
+from scipy.stats import entropy
 
 
 def check_type(X, return_list: bool = False):
@@ -81,7 +82,7 @@ def custom_shuffle(num_examples):
 
 
 def data_properties(y, selected_examples, num_tails: int = 2, display_full_properties=True, data_name="test",
-                    selected_name:str="training set", file_name: str = "tails_bar", rspath: str = "."):
+                    selected_name: str = "training set", file_name: str = "tails_bar", rspath: str = "."):
     if display_full_properties:
         L_S = int(np.sum(y))
         LCard_S = L_S / y.shape[0]
@@ -106,22 +107,26 @@ def data_properties(y, selected_examples, num_tails: int = 2, display_full_prope
         print('\t>> Number of dominant labels of size {0}: {1}'.format(
             num_tails + 1, int(np.count_nonzero(tail))))
 
-    tail = np.sum(y, axis=0)
-    ntail_idx = np.nonzero(tail)[0]
-    tail = tail[ntail_idx]
+    distr_y = np.sum(y, axis=0)
+    ntail_idx = np.nonzero(distr_y)[0]
+    tail = distr_y[ntail_idx]
     tail_idx = np.argsort(tail)
     tail = tail[tail_idx]
+    distr_y = distr_y / np.sum(y)
 
     y = y[selected_examples]
-    tail_selected = np.sum(y, axis=0)
-    tail_selected = tail_selected[ntail_idx]
+    distr_y_selected = np.sum(y, axis=0)
+    tail_selected = distr_y[ntail_idx]
     tail_selected = tail_selected[tail_idx]
+    distr_y_selected = distr_y_selected / np.sum(y)
 
     L_S = int(np.sum(y))
     LCard_S = L_S / y.shape[0]
     LDen_S = LCard_S / L_S
     DL_S = np.nonzero(np.sum(y, axis=0))[0].size
     PDL_S = DL_S / y.shape[0]
+    kl = entropy(pk=distr_y_selected, qk=distr_y)
+
     print('## SELECTED ({0}) DATA PROPERTIES for {1}...'.format(selected_name, data_name))
     print('\t>> Number of examples: {0}'.format(y.shape[0]))
     print('\t>> Number of labels: {0}'.format(L_S))
@@ -129,7 +134,7 @@ def data_properties(y, selected_examples, num_tails: int = 2, display_full_prope
     print('\t>> Label density: {0:.4f}'.format(LDen_S))
     print('\t>> Distinct label sets: {0}'.format(DL_S))
     print('\t>> Proportion of distinct label sets: {0:.4f}'.format(PDL_S))
-
+    print('\t>> KL difference between two full and selected examples labels distributions: {0:.4f}'.format(kl))
     # print
     df_comp = pd.DataFrame(
         {"Class": np.arange(1, 1 + tail.shape[0]), "All": tail, "Selected": tail_selected})
