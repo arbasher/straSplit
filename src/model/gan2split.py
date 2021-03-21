@@ -19,9 +19,10 @@ from scipy.sparse import lil_matrix
 
 from src.model.extreme2split import ExtremeStratification
 from src.model.gan2embed import GAN2Embed
+from src.model.iterative2split import IterativeStratification
 from src.model.naive2split import NaiveStratification
-from src.utility.file_path import DATASET_PATH
-from src.utility.utils import check_type, LabelBinarizer
+from src.utility.file_path import DATASET_PATH, RESULT_PATH
+from src.utility.utils import check_type, data_properties, LabelBinarizer
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
@@ -284,13 +285,11 @@ class GANStratification(object):
             D = __scale_diagonal(D=D) / self.sigma
             return D.dot(L.dot(D))
 
-    def fit(self, X, y, use_extreme: bool = False):
+    def fit(self, y, split_type: str = "extreme"):
         """Split multi-label y dataset into train and test subsets.
 
         Parameters
         ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_features).
-
         y : {array-like, sparse matrix} of shape (n_samples, n_labels).
 
         use_extreme : whether to apply stratification for extreme
@@ -301,15 +300,15 @@ class GANStratification(object):
         data partition : two lists of indices representing the resulted data split
         """
 
-        if X is None:
+        if y is None:
             raise Exception("Please provide a dataset.")
 
-        check, X = check_type(X, False)
+        check, y = check_type(y, False)
         if not check:
             tmp = "The method only supports scipy.sparse and numpy.ndarray type of data"
             raise Exception(tmp)
 
-        num_examples, num_features, num_labels = X.shape[0], X.shape[1], y.shape[1]
+        num_examples, num_labels = y.shape
 
         # check whether data is singly labeled
         if num_labels == 1:
@@ -348,23 +347,26 @@ class GANStratification(object):
         self.is_fit = True
 
         # perform splitting
-        if use_extreme:
-            extreme = ExtremeStratification(swap_probability=self.swap_probability,
-                                            threshold_proportion=self.threshold_proportion, decay=self.decay,
-                                            shuffle=self.shuffle, split_size=self.split_size,
-                                            num_epochs=self.num_epochs, verbose=False)
-            train_list, test_list = extreme.fit(X=X, y=y)
+        if split_type == "extreme":
+            st = ExtremeStratification(swap_probability=self.swap_probability,
+                                       threshold_proportion=self.threshold_proportion, decay=self.decay,
+                                       shuffle=self.shuffle, split_size=self.split_size,
+                                       num_epochs=self.num_epochs, verbose=False)
+            train_list, test_list = st.fit(X=X, y=y)
+        elif split_type == "iterative":
+            st = IterativeStratification(shuffle=self.shuffle, split_size=self.split_size, verbose=False)
+            train_list, test_list = st.fit(y=y)
         else:
-            naive = NaiveStratification(shuffle=self.shuffle, split_size=self.split_size, batch_size=self.batch_size,
-                                        num_jobs=self.num_jobs, verbose=False)
-            train_list, test_list = naive.fit(y=y)
+            st = NaiveStratification(shuffle=self.shuffle, split_size=self.split_size, batch_size=self.batch_size,
+                                     num_jobs=self.num_jobs, verbose=False)
+            train_list, test_list = st.fit(y=y)
         return train_list, test_list
 
 
 if __name__ == "__main__":
-    X_name = "Xbirds_train.pkl"
-    y_name = "Ybirds_train.pkl"
-    use_extreme = True
+    X_name = "medical_X.pkl"
+    y_name = "medical_y.pkl"
+    split_type = "extreme"
 
     file_path = os.path.join(DATASET_PATH, y_name)
     with open(file_path, mode="rb") as f_in:
@@ -379,14 +381,22 @@ if __name__ == "__main__":
 
     st = GANStratification(dimension_size=50, num_examples2gen=20, update_ratio=1, window_size=2, num_subsamples=10000,
                            num_clusters=5, sigma=2, swap_probability=0.1, threshold_proportion=0.1, decay=0.1,
-                           shuffle=True, split_size=0.75, batch_size=100, max_iter_gen=30, max_iter_dis=30,
+                           shuffle=True, split_size=0.75, batch_size=1000, max_iter_gen=30, max_iter_dis=30,
                            num_epochs=5, lambda_gen=1e-5, lambda_dis=1e-5, lr=1e-3, display_interval=30, num_jobs=2)
-    training_idx, test_idx = st.fit(X=X, y=y, use_extreme=use_extreme)
-    training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx],
-                                   use_extreme=use_extreme)
+    training_idx, test_idx = st.fit(y=y, split_type=split_type)
+    # training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx],
+    #                                split_type=split_type)
 
     print("\n{0}".format(60 * "-"))
-    print("## Summary...")
-    print("\t>> Training set size: {0}".format(len(training_idx)))
-    print("\t>> Validation set size: {0}".format(len(dev_idx)))
-    print("\t>> Test set size: {0}".format(len(test_idx)))
+    data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=2,
+                    display_full_properties=True, data_name="medical",
+                    selected_name="training set", file_name="gan2split_train",
+                    rspath=RESULT_PATH)
+    data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=2,
+                    display_full_properties=False, data_name="medical",
+                    selected_name="test set", file_name="gan2split_test",
+                    rspath=RESULT_PATH)
+    # data_properties(y=y.toarray(), selected_examples=dev_idx, num_tails=2,
+    #                 display_full_properties=False, data_name="medical",
+    #                 selected_name="dev set", file_name="gan2split_dev",
+    #                 rspath=RESULT_PATH)

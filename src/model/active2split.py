@@ -13,10 +13,12 @@ import warnings
 import numpy as np
 from joblib import Parallel, delayed
 from scipy.special import expit
+from sklearn.linear_model import SGDClassifier
 
 from src.model.extreme2split import ExtremeStratification
-from src.utility.file_path import DATASET_PATH
-from src.utility.utils import check_type, custom_shuffle, LabelBinarizer
+from src.utility.file_path import DATASET_PATH, RESULT_PATH
+from src.utility.utils import check_type, data_properties, LabelBinarizer
+from src.utility.utils import custom_shuffle
 
 EPSILON = np.finfo(np.float).eps
 UPPER_BOUND = np.log(sys.float_info.max) * 10
@@ -27,11 +29,12 @@ np.seterr(divide='ignore', invalid='ignore')
 
 class ActiveStratification(object):
     def __init__(self, subsample_labels_size: int = 50, acquisition_type: str = "psp", top_k: int = 20,
+                 calc_ads: bool = True, ads_percent: float = 0.7, use_solver: bool = True, loss_function: str = "hinge",
                  swap_probability: float = 0.1, threshold_proportion: float = 0.1, decay: float = 0.1,
                  penalty: str = 'elasticnet', alpha_elastic: float = 0.0001, l1_ratio: float = 0.65,
-                 alpha_l21: float = 0.01, loss_threshold: float = 0.05, shuffle: bool = True,
-                 split_size: float = 0.75, batch_size: int = 100, num_epochs: int = 50, lr: float = 1e-3,
-                 display_interval: int = 1, num_jobs: int = 2):
+                 alpha_l21: float = 5, loss_threshold: float = 0.05, shuffle: bool = True, split_size: float = 0.75,
+                 batch_size: int = 100, num_epochs: int = 50, lr: float = 1e-3, display_interval: int = 1,
+                 num_jobs: int = 2):
         """The predictive uncertainty approach to splitting a multi-label
             data using the stratification approach.
 
@@ -48,6 +51,19 @@ class ActiveStratification(object):
             Top k labels to be considered for calculating the model
             for psp acquisition function.
 
+        calc_ads : bool, default=False
+            A boolean variable indicating whether to subsample dataset
+            using ADS.
+
+        ads_percent : float, default=0.7
+            Proportion of active dataset subsampling.
+
+        use_solver : bool, default=True
+            Whether to apply sklearn optimizers.
+
+        loss_function : str, default="hinge"
+            The loss function to be used.
+
         swap_probability : float, default=0.1
             A hyper-parameter for stratification.
 
@@ -58,7 +74,7 @@ class ActiveStratification(object):
             A hyper-parameter for stratification.
 
         penalty: str, default="elasticnet"
-            The penalty (aka regularization term). {"elasticnet" or "l21"}
+            The penalty (aka regularization term). {"l1", "l2", "elasticnet", or "l21"}
 
         alpha_elastic : float, default=0.0001
             Constant controlling elastic term.
@@ -66,7 +82,7 @@ class ActiveStratification(object):
         l1_ratio : float, default=0.0001
             The elastic net mixing parameter.
 
-        alpha_l21 : float, default=0.01
+        alpha_l21 : float, default=5
             Constant controlling l21 term.
 
         loss_threshold : float, default=0.05
@@ -108,6 +124,15 @@ class ActiveStratification(object):
             top_k = 20
         self.top_k = top_k
 
+        self.calc_ads = calc_ads
+        if calc_ads:
+            if ads_percent < 0.0 or ads_percent >= 1.0:
+                ads_percent = 0.7
+            self.ads_percent = ads_percent
+
+        self.use_solver = use_solver
+        self.loss_function = loss_function
+
         if swap_probability < 0.0:
             swap_probability = 0.1
         self.swap_probability = swap_probability
@@ -120,7 +145,12 @@ class ActiveStratification(object):
             decay = 0.1
         self.decay = decay
 
-        self.penalty = penalty
+        if penalty in {'l2', 'l1', 'elasticnet'}:
+            self.penalty = penalty
+        elif penalty == 'l21':
+            self.penalty = penalty
+        else:
+            self.penalty = "elasticnet"
 
         if alpha_elastic < 0.0:
             alpha_elastic = 0.0001
@@ -184,6 +214,11 @@ class ActiveStratification(object):
         if self.acquisition_type == "psp":
             argdict.update({'top_k': 'Top k labels to be considered for calculating the model '
                                      'for psp acquisition function: {0}'.format(self.top_k)})
+        if self.calc_ads:
+            argdict.update({'calc_ads': 'Whether subsample dataset: {0}'.format(self.calc_ads)})
+            argdict.update({'ads_percent': 'Proportion of active dataset subsampling: {0}'.format(self.ads_percent)})
+        argdict.update({'use_solver': 'Apply sklearn optimizers? {0}'.format(self.use_solver)})
+        argdict.update({'loss_function': 'The loss function: {0}'.format(self.loss_function)})
         argdict.update({'swap_probability': 'A hyper-parameter for '
                                             'extreme stratification: {0}'.format(self.swap_probability)})
         argdict.update({'threshold_proportion': 'A hyper-parameter for '
@@ -271,13 +306,21 @@ class ActiveStratification(object):
             ret = M / D
         return ret
 
+    def __solver(self, X, y, coef, intercept):
+        if self.penalty == 'l21':
+            penalty = "none"
+        else:
+            penalty = self.penalty
+        estimator = SGDClassifier(loss=self.loss_function, penalty=penalty, alpha=self.alpha_elastic,
+                                  l1_ratio=self.l1_ratio, shuffle=self.shuffle, n_jobs=self.num_jobs,
+                                  random_state=12345, warm_start=True, average=True)
+        estimator.fit(X=X, y=y, coef_init=coef, intercept_init=intercept)
+        return estimator.coef_[0], estimator.intercept_
+
     def __optimize_theta(self, X, y, learning_rate, batch_idx, total_progress):
         num_examples = X.shape[0]
         X = X.toarray()
         y = np.array(y.toarray(), dtype=np.float32)
-        y[y == -1] = 0.1
-        y[y == 0] = 0.1
-        y[y == 1] = 0.9
 
         labels = np.arange(self.num_labels)
         if self.num_labels > self.subsample_labels_size:
@@ -295,28 +338,35 @@ class ActiveStratification(object):
             count += 1
             gradient = 0.0
 
-            coef_intercept = self.coef[label_idx]
-            X_tmp = np.concatenate((np.ones((num_examples, 1)), X), axis=1)
-            coef_intercept = np.hstack((self.intercept[label_idx], coef_intercept))
-            cond = -(2 * y[:, label_idx] - 1)
-            coef = np.dot(X_tmp, coef_intercept)
-            coef = np.multiply(coef, cond)
-            logit = 1 / (np.exp(-coef) + 1)
-            coef = np.multiply(X_tmp, cond[:, np.newaxis])
-            coef = np.multiply(coef, logit[:, np.newaxis])
-            coef = np.mean(coef, axis=0)
-            del logit, coef_intercept
-            self.coef[label_idx] = self.coef[label_idx] - learning_rate * coef[1:]
-            self.intercept[label_idx] = coef[0]
-            if self.penalty != "l21":
-                l1 = self.l1_ratio * np.sign(self.coef[label_idx])
-                l2 = (1 - self.l1_ratio) * 2 * self.coef[label_idx]
-                if self.penalty == "elasticnet":
-                    gradient += self.alpha_elastic * (l1 + l2)
-                if self.penalty == "l1":
-                    gradient += self.alpha_elastic * l1
-                if self.penalty == "l2":
-                    gradient += self.alpha_elastic * l2
+            if self.use_solver:
+                coef = np.reshape(self.coef[label_idx], newshape=(1, self.coef[label_idx].shape[0]))
+                intercept = self.intercept[label_idx]
+                coef, intercept = self.__solver(X=X, y=y[:, label_idx], coef=coef, intercept=intercept)
+                self.coef[label_idx] = coef
+                self.intercept[label_idx] = intercept
+            else:
+                coef_intercept = self.coef[label_idx]
+                X_tmp = np.concatenate((np.ones((num_examples, 1)), X), axis=1)
+                coef_intercept = np.hstack((self.intercept[label_idx], coef_intercept))
+                cond = -(2 * y[:, label_idx] - 1)
+                coef = np.dot(X_tmp, coef_intercept)
+                coef = np.multiply(coef, cond)
+                logit = 1 / (np.exp(-coef) + 1)
+                coef = np.multiply(X_tmp, cond[:, np.newaxis])
+                coef = np.multiply(coef, logit[:, np.newaxis])
+                coef = np.mean(coef, axis=0)
+                del logit, coef_intercept
+                self.coef[label_idx] = self.coef[label_idx] - learning_rate * coef[1:]
+                self.intercept[label_idx] = coef[0]
+                if self.penalty != "l21":
+                    l1 = self.l1_ratio * np.sign(self.coef[label_idx])
+                    l2 = (1 - self.l1_ratio) * 2 * self.coef[label_idx]
+                    if self.penalty == "elasticnet":
+                        gradient += self.alpha_elastic * (l1 + l2)
+                    if self.penalty == "l1":
+                        gradient += self.alpha_elastic * l1
+                    if self.penalty == "l2":
+                        gradient += self.alpha_elastic * l2
 
             # compute the constraint lambda_5 * D_Theta^path * Theta^path
             if self.penalty == "l21":
@@ -436,6 +486,12 @@ class ActiveStratification(object):
             H = self.__psp(y_true=y, prob=prob)
         return H
 
+    def __subsample_strategy(self, H, num_examples):
+        sub_sampled_size = int(self.ads_percent * num_examples)
+        sorted_idx = np.argsort(H)[::-1]
+        init_samples = sorted_idx[:sub_sampled_size]
+        return init_samples
+
     def __cost(self, X, y, label_idx):
         desc = '\t\t\t--> Calculating cost: {0:.2f}%...'.format((((label_idx + 1) / self.num_labels) * 100))
         print(desc, end="\r")
@@ -486,12 +542,12 @@ class ActiveStratification(object):
 
         check, X = check_type(X=X, return_list=False)
         if not check:
-            tmp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
-            raise Exception(tmp)
+            temp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
+            raise Exception(temp)
         check, y = check_type(X=y, return_list=False)
         if not check:
-            tmp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
-            raise Exception(tmp)
+            temp = "The method only supports scipy.sparse, numpy.ndarray, and list type of data"
+            raise Exception(temp)
 
         # collect properties from data
         num_examples, num_features = X.shape
@@ -512,7 +568,6 @@ class ActiveStratification(object):
             old_cost = np.inf
             optimal_init = self.__optimal_learning_rate(alpha=self.lr)
             n_epochs = self.num_epochs + 1
-
             timeref = time.time()
 
             for epoch in np.arange(start=1, stop=n_epochs):
@@ -520,10 +575,17 @@ class ActiveStratification(object):
                 print(desc)
 
                 # shuffle dataset
-                example_idx = custom_shuffle(num_examples=num_examples)
-                example_idx = list(example_idx)
-                X = X[example_idx, :]
-                y = y[example_idx, :]
+                if epoch == 1:
+                    example_idx = custom_shuffle(num_examples=num_examples)
+                    example_idx = list(example_idx)
+                    X = X[example_idx, :]
+                    y = y[example_idx, :]
+                else:
+                    if self.calc_ads:
+                        temp = [s for s in range(num_examples) if s not in example_idx]
+                        sub_sampled_size = int(self.ads_percent * len(temp))
+                        temp = list(np.random.choice(a=temp, size=sub_sampled_size, replace=False))
+                        example_idx.extend(temp)
 
                 # usual optimization technique
                 learning_rate = 1.0 / (self.lr * (optimal_init + epoch - 1))
@@ -533,8 +595,11 @@ class ActiveStratification(object):
 
                 self.__parallel_backward(X=X, y=y, learning_rate=learning_rate, examples_idx=example_idx)
                 prob = self.__parallel_forward(X=X, y=y, example_idx=example_idx)
-                examples_scores = self.__predictive_uncertainty(prob=prob, y=y[example_idx])
-                examples_scores = dict(list(zip(example_idx, examples_scores)))
+                H = self.__predictive_uncertainty(prob=prob, y=y[example_idx])
+                if self.calc_ads:
+                    example_idx = self.__subsample_strategy(H=H, num_examples=num_examples)
+                    example_idx = list(example_idx)
+                    H = H[example_idx]
 
                 end_epoch = time.time()
                 self.is_fit = True
@@ -552,8 +617,16 @@ class ActiveStratification(object):
             print('\t>> Estimating examples scores...')
             example_idx = list(range(num_examples))
             prob = self.__parallel_forward(X=X, y=y, example_idx=example_idx)
-            examples_scores = self.__predictive_uncertainty(prob=prob, y=y[example_idx])
-            examples_scores = dict(list(zip(example_idx, examples_scores)))
+            H = self.__predictive_uncertainty(prob=prob, y=y[example_idx])
+            if self.calc_ads:
+                example_idx = self.__subsample_strategy(H=H, num_examples=num_examples)
+                example_idx = list(example_idx)
+                H = H[example_idx]
+
+        X = X[example_idx]
+        y = y[example_idx]
+        example_idx = list(range(len(example_idx)))
+        examples_scores = dict(list(zip(example_idx, H)))
 
         # perform calibrated splitting
         extreme = ExtremeStratification(swap_probability=self.swap_probability,
@@ -566,9 +639,8 @@ class ActiveStratification(object):
 
 
 if __name__ == "__main__":
-    X_name = "Xbirds_train.pkl"
-    y_name = "Ybirds_train.pkl"
-    use_extreme = False
+    X_name = "medical_X.pkl"
+    y_name = "medical_y.pkl"
 
     file_path = os.path.join(DATASET_PATH, y_name)
     with open(file_path, mode="rb") as f_in:
@@ -581,17 +653,24 @@ if __name__ == "__main__":
         X = pkl.load(f_in)
         X = X[idx]
 
-    st = ActiveStratification(subsample_labels_size=10, acquisition_type="psp", top_k=5,
-                              swap_probability=0.1, threshold_proportion=0.1, decay=0.1,
-                              penalty='l21', alpha_elastic=0.0001, l1_ratio=0.65,
-                              alpha_l21=0.01, loss_threshold=0.05, shuffle=True,
-                              split_size=0.75, batch_size=100, num_epochs=50, lr=1e-3,
-                              display_interval=2, num_jobs=2)
+    st = ActiveStratification(subsample_labels_size=10, acquisition_type="entropy", top_k=5, calc_ads=False,
+                              ads_percent=0.7, use_solver=True, loss_function="hinge", swap_probability=0.1,
+                              threshold_proportion=0.1, decay=0.1, penalty='elasticnet', alpha_elastic=0.0001,
+                              l1_ratio=0.65, alpha_l21=0.01, loss_threshold=0.05, shuffle=True, split_size=0.75,
+                              batch_size=1000, num_epochs=50, lr=1e-3, display_interval=2, num_jobs=2)
     training_idx, test_idx = st.fit(X=X, y=y)
-    training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx])
+    # training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx])
 
     print("\n{0}".format(60 * "-"))
-    print("## Summary...")
-    print("\t>> Training set size: {0}".format(len(training_idx)))
-    print("\t>> Validation set size: {0}".format(len(dev_idx)))
-    print("\t>> Test set size: {0}".format(len(test_idx)))
+    data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=2,
+                    display_full_properties=True, data_name="medical",
+                    selected_name="training set", file_name="active2split_train",
+                    rspath=RESULT_PATH)
+    data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=2,
+                    display_full_properties=False, data_name="medical",
+                    selected_name="test set", file_name="active2split_test",
+                    rspath=RESULT_PATH)
+    # data_properties(y=y.toarray(), selected_examples=dev_idx, num_tails=2,
+    #                 display_full_properties=False, data_name="medical",
+    #                 selected_name="dev set", file_name="active2split_dev",
+    #                 rspath=RESULT_PATH)

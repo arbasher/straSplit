@@ -14,8 +14,8 @@ import numpy as np
 from joblib import Parallel, delayed
 from scipy.sparse import lil_matrix
 
-from src.utility.file_path import DATASET_PATH
-from src.utility.utils import check_type, LabelBinarizer
+from src.utility.file_path import DATASET_PATH, RESULT_PATH
+from src.utility.utils import check_type, data_properties, LabelBinarizer
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
@@ -190,19 +190,27 @@ class NaiveStratification(object):
 
 
 if __name__ == "__main__":
-    y_name = "Ybirds_train.pkl"
+    y_name = "medical_y.pkl"
 
     file_path = os.path.join(DATASET_PATH, y_name)
     with open(file_path, mode="rb") as f_in:
         y = pkl.load(f_in)
         y = lil_matrix(y[y.getnnz(axis=1) != 0][:, y.getnnz(axis=0) != 0].A)
 
-    st = NaiveStratification(shuffle=True, split_size=0.8, batch_size=1000, num_jobs=10)
+    st = NaiveStratification(shuffle=True, split_size=0.8, batch_size=500, num_jobs=10)
     training_idx, test_idx = st.fit(y=y)
-    training_idx, dev_idx = st.fit(y=y[training_idx])
+    # training_idx, dev_idx = st.fit(y=y[training_idx])
 
     print("\n{0}".format(60 * "-"))
-    print("## Summary...")
-    print("\t>> Training set size: {0}".format(len(training_idx)))
-    print("\t>> Validation set size: {0}".format(len(dev_idx)))
-    print("\t>> Test set size: {0}".format(len(test_idx)))
+    data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1,
+                    display_full_properties=True, data_name="medical",
+                    selected_name="training set", file_name="naive2split_train",
+                    rspath=RESULT_PATH)
+    data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=1,
+                    display_full_properties=False, data_name="medical",
+                    selected_name="test set", file_name="naive2split_test",
+                    rspath=RESULT_PATH)
+    # data_properties(y=y.toarray(), selected_examples=dev_idx, num_tails=2,
+    #                 display_full_properties=False, data_name="medical",
+    #                 selected_name="dev set", file_name="naive2split_dev",
+    #                 rspath=RESULT_PATH)

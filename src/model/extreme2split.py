@@ -13,8 +13,8 @@ import warnings
 
 import numpy as np
 
-from src.utility.file_path import DATASET_PATH
-from src.utility.utils import check_type, custom_shuffle, LabelBinarizer
+from src.utility.file_path import DATASET_PATH, RESULT_PATH
+from src.utility.utils import check_type, custom_shuffle, data_properties, LabelBinarizer
 
 random.seed(12345)
 
@@ -258,7 +258,7 @@ class ExtremeStratification(object):
             # transform it to multi-label data
             classes = list(set([i[0] if i else 0 for i in X.data]))
             mlb = LabelBinarizer(labels=classes)
-            X = mlb.transform(X)
+            y = mlb.transform(y)
 
         if self.shuffle:
             sample_idx = custom_shuffle(num_examples=num_examples)
@@ -290,7 +290,7 @@ class ExtremeStratification(object):
         # 6. Calculate the total score
         # The higher the score, the more 'imbalanced' the distribution of labels between train and test sets
         total_score = self.__calculate_total_score(instances_dict)
-        desc = '\t>> Stratified split (extreme)...'
+        desc = '\t>> Perform splitting (extreme)...'
         print(desc)
         print('\t\t--> Starting score: {0}'.format(round(total_score)))
 
@@ -342,8 +342,9 @@ class ExtremeStratification(object):
 
 
 if __name__ == "__main__":
-    X_name = "Xbirds_train.pkl"
-    y_name = "Ybirds_train.pkl"
+    X_name = "medical_X.pkl"
+    y_name = "medical_y.pkl"
+    use_extreme = True
 
     file_path = os.path.join(DATASET_PATH, y_name)
     with open(file_path, mode="rb") as f_in:
@@ -359,10 +360,18 @@ if __name__ == "__main__":
     st = ExtremeStratification(swap_probability=0.1, threshold_proportion=0.1, decay=0.1,
                                shuffle=True, split_size=0.75, num_epochs=50)
     training_idx, test_idx = st.fit(X=X, y=y)
-    training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx])
+    # training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx])
 
     print("\n{0}".format(60 * "-"))
-    print("## Summary...")
-    print("\t>> Training set size: {0}".format(len(training_idx)))
-    print("\t>> Validation set size: {0}".format(len(dev_idx)))
-    print("\t>> Test set size: {0}".format(len(test_idx)))
+    data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1,
+                    display_full_properties=True, data_name="medical",
+                    selected_name="training set", file_name="extreme2split_train",
+                    rspath=RESULT_PATH)
+    data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=1,
+                    display_full_properties=False, data_name="medical",
+                    selected_name="test set", file_name="extreme2split_test",
+                    rspath=RESULT_PATH)
+    # data_properties(y=y.toarray(), selected_examples=dev_idx, num_tails=2,
+    #                 display_full_properties=False, data_name="medical",
+    #                 selected_name="dev set", file_name="extreme2split_dev",
+    #                 rspath=RESULT_PATH)
