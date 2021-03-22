@@ -21,6 +21,7 @@ DATASET = ['bibtex', 'birds', 'Corel5k', 'delicious', 'emotions',
            'rcv1subset2', 'rcv1subset3', 'rcv1subset4', 'rcv1subset5',
            'scene', 'tmc2007_500', 'yeast']
 
+
 ###********************          Utilty functions         ********************###
 
 def check_type(X, return_list: bool = False):
@@ -96,35 +97,47 @@ def normalize_laplacian(A, sigma: float = 2.0, return_adj: bool = False, norm_ad
         return D.dot(L.dot(D))
 
 
-def data_properties(y, selected_examples, num_tails: int = 2, display_full_properties=True, dataset_name="test",
-                    model_name: str = "model", split_set_name: str = "training set", rspath: str = ".",
-                    mode: str = "w"):
+def data_properties(y, selected_examples, num_tails: int = 2, dataset_name="test", model_name: str = "model",
+                    rspath: str = ".", display_dataframe: bool = False):
+    save_name = model_name.lower() + "_" + dataset_name.lower()
     args_list = []
-    if display_full_properties:
-        L_S = int(np.sum(y))
-        LCard_S = L_S / y.shape[0]
-        LDen_S = LCard_S / L_S
-        DL_S = np.nonzero(np.sum(y, axis=0))[0].size
-        PDL_S = DL_S / y.shape[0]
-        tail = np.sum(y, axis=0)
-        tail = tail[np.nonzero(tail)[0]]
-        tail[tail <= num_tails] = 1
-        tail[tail > num_tails] = 0
-        tail_sum = int(tail.sum())
-        tail[tail == 0] = -1
-        tail[tail == 1] = 0
-        tail_count = int(np.count_nonzero(tail))
+    hold_list = [['Number of examples', 'Number of labels', 'Label cardinality', 'Label density',
+                  'Distinct label sets', 'Proportion of distinct label sets',
+                  'Number of tail labels of size less than or equal to {0}'.format(num_tails),
+                  'Number of dominant labels of size greater than {0}'.format(num_tails + 1),
+                  'KL difference between complete and data partition']]
 
-        args_list.append('## DATA PROPERTIES for {0}...'.format(dataset_name))
-        args_list.append('\t>> Number of examples: {0}'.format(y.shape[0]))
-        args_list.append('\t>> Number of labels: {0}'.format(L_S))
-        args_list.append('\t>> Label cardinality: {0:.6f}'.format(LCard_S))
-        args_list.append('\t>> Label density: {0:.6f}'.format(LDen_S))
-        args_list.append('\t>> Distinct label sets: {0}'.format(DL_S))
-        args_list.append('\t>> Proportion of distinct label sets: {0:.6f}'.format(PDL_S))
-        args_list.append('\t>> Number of tail labels of size {0}: {1}'.format(num_tails, tail_sum))
-        args_list.append('\t>> Number of dominant labels of size {0}: {1}'.format(num_tails + 1, tail_count))
+    # 1. Compute properties of complete data
+    L_S = int(np.sum(y))
+    LCard_S = L_S / y.shape[0]
+    LDen_S = LCard_S / L_S
+    DL_S = np.nonzero(np.sum(y, axis=0))[0].size
+    PDL_S = DL_S / y.shape[0]
 
+    # 1.1. Compute tail labels properties for the complete data
+    tail = np.sum(y, axis=0)
+    tail = tail[np.nonzero(tail)[0]]
+    tail[tail <= num_tails] = 1
+    tail[tail > num_tails] = 0
+    tail_sum = int(tail.sum())
+    tail[tail == 0] = -1
+    tail[tail == 1] = 0
+    tail_count = int(np.count_nonzero(tail))
+
+    args_list.append('## PROPERTIES for {0}...'.format(dataset_name))
+    args_list.append('\t>> Number of examples: {0}'.format(y.shape[0]))
+    args_list.append('\t>> Number of labels: {0}'.format(L_S))
+    args_list.append('\t>> Label cardinality: {0:.6f}'.format(LCard_S))
+    args_list.append('\t>> Label density: {0:.6f}'.format(LDen_S))
+    args_list.append('\t>> Distinct label sets: {0}'.format(DL_S))
+    args_list.append('\t>> Proportion of distinct label sets: {0:.6f}'.format(PDL_S))
+    args_list.append('\t>> Number of labels of size '
+                     'less than or equal to {0}: {1}'.format(num_tails, tail_sum))
+    args_list.append('\t>> Number of labels of size '
+                     'greater than {0}: {1}'.format(num_tails + 1, tail_count))
+    hold_list.append([y.shape[0], L_S, LCard_S, LDen_S, DL_S, PDL_S, tail_sum, tail_count, 0])
+
+    # 2. Compute properties of complete data
     distr_y = np.sum(y, axis=0)
     ntail_idx = np.nonzero(distr_y)[0]
     tail = distr_y[ntail_idx]
@@ -132,46 +145,65 @@ def data_properties(y, selected_examples, num_tails: int = 2, display_full_prope
     tail = tail[tail_idx]
     distr_y = distr_y / np.sum(y)
 
-    y = y[selected_examples]
-    distr_y_selected = np.sum(y, axis=0)
-    tail_selected = distr_y_selected[ntail_idx]
-    tail_selected = tail_selected[tail_idx]
-    distr_y_selected = distr_y_selected / np.sum(y)
+    # 3. Iteratively calculate properties of training and test data, respectively
+    split_set_name = ["training set", "test set"]
+    tail_selected_list = []
+    for idx in range(len(selected_examples)):
+        y_tmp = y[selected_examples[idx]]
+        distr_y_selected = np.sum(y_tmp, axis=0)
+        tail_selected = distr_y_selected[ntail_idx]
+        tail_selected = tail_selected[tail_idx]
+        distr_y_selected = distr_y_selected / np.sum(y)
+        tail_selected_list.append(tail_selected)
 
-    L_S_selected = int(np.sum(y))
-    LCard_S_selected = L_S_selected / y.shape[0]
-    LDen_S_selected = LCard_S_selected / L_S_selected
-    DL_S_selected = np.nonzero(np.sum(y, axis=0))[0].size
-    PDL_S_selected = DL_S_selected / y.shape[0]
-    kl = entropy(pk=distr_y_selected, qk=distr_y)
+        L_S_selected = int(y_tmp.sum())
+        LCard_S_selected = L_S_selected / y_tmp.shape[0]
+        LDen_S_selected = LCard_S_selected / L_S_selected
+        DL_S_selected = lil_matrix(y_tmp.sum(0)).nnz
+        PDL_S_selected = DL_S_selected / y_tmp.shape[0]
+        kl = entropy(pk=distr_y_selected, qk=distr_y)
 
-    args_list.append('## SELECTED ({0} set) DATA PROPERTIES for {1}...'.format(split_set_name, dataset_name))
-    args_list.append('\t>> Number of examples: {0}'.format(y.shape[0]))
-    args_list.append('\t>> Number of labels: {0}'.format(L_S_selected))
-    args_list.append('\t>> Label cardinality: {0:.6f}'.format(LCard_S_selected))
-    args_list.append('\t>> Label density: {0:.6f}'.format(LDen_S_selected))
-    args_list.append('\t>> Distinct label sets: {0}'.format(DL_S_selected))
-    args_list.append('\t>> Proportion of distinct label sets: {0:.6f}'.format(PDL_S_selected))
-    args_list.append(
-        '\t>> KL difference between two full and selected examples labels distributions: {0:.6f}'.format(kl))
+        # 3.1. Compute tail labels properties for the complete data
+        temp = np.sum(y_tmp, axis=0)
+        temp = temp[np.nonzero(temp)[0]]
+        temp[temp <= num_tails] = 1
+        temp[temp > num_tails] = 0
+        temp_sum = int(temp.sum())
+        temp[temp == 0] = -1
+        temp[temp == 1] = 0
+        temp_count = int(np.count_nonzero(temp))
 
-    save_name = model_name.lower() + "_" + dataset_name.lower()
-    temp = os.path.join(rspath, save_name + "_properties.txt")
-    with open(file=temp, mode=mode) as fout:
-        for args in args_list:
-            print(args)
-            fout.write(args + "\n")
+        args_list.append('## PROPERTIES for {0} ({1})...'.format(dataset_name, split_set_name[idx]))
+        args_list.append('\t>> Number of examples: {0}'.format(y_tmp.shape[0]))
+        args_list.append('\t>> Number of labels: {0}'.format(L_S_selected))
+        args_list.append('\t>> Label cardinality: {0:.6f}'.format(LCard_S_selected))
+        args_list.append('\t>> Label density: {0:.6f}'.format(LDen_S_selected))
+        args_list.append('\t>> Distinct label sets: {0}'.format(DL_S_selected))
+        args_list.append('\t>> Proportion of distinct label sets: {0:.6f}'.format(PDL_S_selected))
+        args_list.append('\t>> Number of tail labels of size '
+                         'less than or equal to {0}: {1}'.format(num_tails, temp_sum))
+        args_list.append('\t>> Number of dominant labels of size '
+                         'greater than {0}: {1}'.format(num_tails + 1, temp_count))
+        args_list.append('\t>> KL difference between complete '
+                         'and data partition: {0:.6f}'.format(kl))
+        hold_list.append([y_tmp.shape[0], L_S_selected, LCard_S_selected, LDen_S_selected,
+                          DL_S_selected, PDL_S_selected, temp_sum, temp_count, kl])
+
+        if not display_dataframe:
+            for args in args_list:
+                print(args)
 
     # Plotting utilities
-    df_comp = pd.DataFrame({"Class": np.arange(1, 1 + tail.shape[0]), "All": tail, "Selected": tail_selected})
-    df_comp = df_comp.melt(['Class'], var_name='Split', value_name='Sum')
+    df_comp = pd.DataFrame({"Label": np.arange(1, 1 + tail.shape[0]), "Complete": tail,
+                            "Train": tail_selected_list[0], "Test": tail_selected_list[1]})
+    df_comp = df_comp.melt(['Label'], var_name='Split', value_name='Sum')
 
     # Bar plot
     alt.themes.enable('none')
     chart = alt.Chart(df_comp).properties(width=600, height=350).mark_bar(color="grey").encode(
-        x=alt.X('Class:O', title="Class ID", sort='ascending'),
-        y=alt.Y('Sum:Q', title="Number of Examples"),
-        color=alt.Color('Split:N', scale=alt.Scale(range=['grey', 'black'])),
+        x=alt.X('Label:O', title="Label ID", sort='ascending'),
+        y=alt.Y('Sum:Q', title="Number of Examples", stack=None),
+        color=alt.Color('Split:N', scale=alt.Scale(range=['red', 'black', 'blue'])),
     ).configure_header(
         titleFontSize=20,
         labelFontSize=15
@@ -188,7 +220,13 @@ def data_properties(y, selected_examples, num_tails: int = 2, display_full_prope
         padding=10,
         cornerRadius=10).resolve_scale(x='independent')
     # save
-    chart.save(os.path.join(rspath, save_name + "_" + split_set_name.lower() + '_tails' + '.html'))
+    chart.save(os.path.join(rspath, save_name + '.html'))
+
+    df = pd.DataFrame(hold_list).T
+    df.columns = ['Properties for {0}...'.format(dataset_name), 'Complete set', 'Training set', 'Test set']
+    df.to_csv(path_or_buf=os.path.join(rspath, save_name + ".tsv"), sep='\t')
+    if display_dataframe:
+        print(df)
 
 
 class LabelBinarizer(object):

@@ -13,7 +13,7 @@ import warnings
 
 import numpy as np
 
-from utils import DATASET_PATH, RESULT_PATH,DATASET
+from utils import DATASET_PATH, RESULT_PATH, DATASET
 from utils import check_type, custom_shuffle, data_properties, LabelBinarizer
 
 random.seed(12345)
@@ -365,10 +365,6 @@ if __name__ == "__main__":
                                    shuffle=True, split_size=split_size, num_epochs=num_epochs)
         training_idx, test_idx = st.fit(X=X, y=y)
 
-        data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1, display_full_properties=True,
-                        dataset_name=dsname, model_name=model_name, split_set_name="training",
-                        rspath=RESULT_PATH)
-        data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=1, display_full_properties=False,
-                        dataset_name=dsname, model_name=model_name, split_set_name="test", rspath=RESULT_PATH,
-                        mode="a")
+        data_properties(y=y.toarray(), selected_examples=[training_idx, test_idx], num_tails=5, dataset_name=dsname,
+                        model_name=model_name, rspath=RESULT_PATH, display_dataframe=False)
         print("\n{0}\n".format(60 * "-"))

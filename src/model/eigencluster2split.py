@@ -14,12 +14,12 @@ import numpy as np
 from scipy import linalg
 from scipy.cluster.vq import kmeans2
 
-from utils import normalize_laplacian
 from extreme2split import ExtremeStratification
 from iterative2split import IterativeStratification
 from naive2split import NaiveStratification
 from utils import DATASET_PATH, RESULT_PATH, DATASET
 from utils import check_type, data_properties, LabelBinarizer
+from utils import normalize_laplacian
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
@@ -267,10 +267,6 @@ if __name__ == "__main__":
                                            batch_size=500, num_epochs=num_epochs, num_jobs=num_jobs)
         training_idx, test_idx = st.fit(y=y, X=X, split_type=split_type)
 
-        data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1, display_full_properties=True,
-                        dataset_name=dsname, model_name=model_name, split_set_name="training",
-                        rspath=RESULT_PATH)
-        data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=1, display_full_properties=False,
-                        dataset_name=dsname, model_name=model_name, split_set_name="test", rspath=RESULT_PATH,
-                        mode="a")
+        data_properties(y=y.toarray(), selected_examples=[training_idx, test_idx], num_tails=5, dataset_name=dsname,
+                        model_name=model_name, rspath=RESULT_PATH, display_dataframe=False)
         print("\n{0}\n".format(60 * "-"))
