@@ -247,7 +247,7 @@ if __name__ == "__main__":
     num_epochs = 5
     num_jobs = 10
 
-    for dsname in sorted(DATASET):
+    for dsname in DATASET:
         X_name = dsname + "_X.pkl"
         y_name = dsname + "_y.pkl"
 

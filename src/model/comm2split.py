@@ -2,6 +2,7 @@
 Community detection based stratified multi-label dataset splitting
 '''
 
+import itertools
 import os
 import pickle as pkl
 import sys
@@ -9,8 +10,9 @@ import textwrap
 import time
 import warnings
 
-import igraph
+import networkx as nx
 import numpy as np
+from networkx.algorithms import community
 from scipy.sparse import triu
 
 from src.model.extreme2split import ExtremeStratification
@@ -25,7 +27,7 @@ np.seterr(divide='ignore', invalid='ignore')
 
 
 class CommunityStratification(object):
-    def __init__(self, num_subsamples: int = 10000, num_communities: int = 5, walk_size: int = 4, sigma: float = 2,
+    def __init__(self, num_subsamples: int = 10000, num_communities: int = 5, sigma: float = 2,
                  swap_probability: float = 0.1, threshold_proportion: float = 0.1, decay: float = 0.1,
                  shuffle: bool = True, split_size: float = 0.75, batch_size: int = 100, num_epochs: int = 50,
                  num_jobs: int = 2):
@@ -39,9 +41,6 @@ class CommunityStratification(object):
 
         num_communities : int, default=5
             The number of communities to form. It should be greater than 1.
-
-        walk_size : int, default=4
-            The length of random walks to perform, It should be greater than 2.
 
         sigma : float, default=2
             Scaling component to the graph degree matrix.
@@ -83,10 +82,6 @@ class CommunityStratification(object):
         if num_communities < 1:
             num_communities = 5
         self.num_communities = num_communities
-
-        if walk_size < 2:
-            walk_size = 2
-        self.walk_size = walk_size
 
         if sigma < 0.0:
             sigma = 2
@@ -135,7 +130,6 @@ class CommunityStratification(object):
         argdict = dict()
         argdict.update({'num_subsamples': 'Subsampling input size: {0}'.format(self.num_subsamples)})
         argdict.update({'num_communities': 'Number of communities: {0}'.format(self.num_communities)})
-        argdict.update({'walk_size': 'The length of random walks to perform: {0}'.format(self.walk_size)})
         argdict.update({'sigma': 'Constant that scales the amount of '
                                  'laplacian norm regularization: {0}'.format(self.sigma)})
         argdict.update({'swap_probability': 'A hyper-parameter: {0}'.format(self.swap_probability)})
@@ -175,13 +169,14 @@ class CommunityStratification(object):
         A = normalize_laplacian(A=A, sigma=self.sigma, return_adj=True, norm_adj=True)
         A = triu(A)
         # Create the graph
-        vertices = [i for i in range(A.shape[0])]
-        edges = list(zip(*A.nonzero()))
-        weight = A.data.tolist()
-        g = igraph.Graph(vertex_attrs={"label": vertices}, edges=edges)
-        g = g.community_walktrap(weights=weight, steps=self.walk_size)
-        communities = g.as_clustering(n=self.num_communities)
-        communities = np.array(communities.membership)
+        G = nx.from_scipy_sparse_matrix(A=A)
+        comp = community.girvan_newman(G)
+        limited = itertools.takewhile(lambda c: len(c) <= self.num_communities, comp)
+        for communities in limited:
+            communities = communities
+        communities = sorted([(idx, int(c)) for idx in range(len(communities)) for c in communities[idx]],
+                             key=lambda x: x[1])
+        communities = np.array([i for i, j in communities])
         return communities
 
     def fit(self, y, X=None, split_type: str = "extreme"):
@@ -259,7 +254,7 @@ if __name__ == "__main__":
     num_epochs = 5
     num_jobs = 10
 
-    for dsname in sorted(DATASET):
+    for dsname in DATASET:
         X_name = dsname + "_X.pkl"
         y_name = dsname + "_y.pkl"
 
@@ -274,10 +269,9 @@ if __name__ == "__main__":
             X = pkl.load(f_in)
             X = X[idx]
 
-        st = CommunityStratification(num_subsamples=20000, num_communities=10, walk_size=4, sigma=2,
-                                     swap_probability=0.1, threshold_proportion=0.1, decay=0.1,
-                                     shuffle=True, split_size=split_size, batch_size=500, num_epochs=num_epochs,
-                                     num_jobs=num_jobs)
+        st = CommunityStratification(num_subsamples=20000, num_communities=5, sigma=2, swap_probability=0.1,
+                                     threshold_proportion=0.1, decay=0.1, shuffle=True, split_size=split_size,
+                                     batch_size=500, num_epochs=num_epochs, num_jobs=num_jobs)
         training_idx, test_idx = st.fit(y=y, X=X, split_type=split_type)
 
         data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1, display_full_properties=True,

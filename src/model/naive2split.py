@@ -193,7 +193,7 @@ if __name__ == "__main__":
     split_size = 0.80
     num_jobs = 10
 
-    for dsname in sorted(DATASET):
+    for dsname in DATASET:
         y_name = dsname + "_y.pkl"
         file_path = os.path.join(DATASET_PATH, y_name)
         with open(file_path, mode="rb") as f_in:

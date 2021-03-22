@@ -1,13 +1,21 @@
 import os
 import pickle as pkl
 
+import community as community_louvain
+import networkx as nx
 from scipy.sparse import lil_matrix
 from skmultilearn.dataset import load_dataset, available_data_sets
 
-from src.utility.file_path import DATASET_PATH
+from src.model.utils import DATASET_PATH
 
 os.system('clear')
 
+# load the karate club graph
+G = nx.karate_club_graph()
+adj = G.adj
+G = nx.Graph(adj)
+# compute the best partition
+partition = community_louvain.best_partition(G)
 # Paths for the required files
 
 print(">> Transform dataset to lil_matrix...")

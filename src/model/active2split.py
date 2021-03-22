@@ -646,7 +646,7 @@ if __name__ == "__main__":
     num_jobs = 10
     use_solver = False
 
-    for dsname in sorted(DATASET):
+    for dsname in DATASET:
         X_name = dsname + "_X.pkl"
         y_name = dsname + "_y.pkl"
 
