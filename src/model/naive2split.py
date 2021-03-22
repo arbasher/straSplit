@@ -12,10 +12,9 @@ import warnings
 
 import numpy as np
 from joblib import Parallel, delayed
-from scipy.sparse import lil_matrix
 
-from src.utility.file_path import DATASET_PATH, RESULT_PATH
-from src.utility.utils import check_type, data_properties, LabelBinarizer
+from src.model.utils import DATASET_PATH, RESULT_PATH, DATASET
+from src.model.utils import check_type, data_properties, LabelBinarizer
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
@@ -190,27 +189,25 @@ class NaiveStratification(object):
 
 
 if __name__ == "__main__":
-    y_name = "medical_y.pkl"
+    model_name = "naive2split"
+    split_size = 0.80
+    num_jobs = 10
 
-    file_path = os.path.join(DATASET_PATH, y_name)
-    with open(file_path, mode="rb") as f_in:
-        y = pkl.load(f_in)
-        y = lil_matrix(y[y.getnnz(axis=1) != 0][:, y.getnnz(axis=0) != 0].A)
+    for dsname in sorted(DATASET):
+        y_name = dsname + "_y.pkl"
+        file_path = os.path.join(DATASET_PATH, y_name)
+        with open(file_path, mode="rb") as f_in:
+            y = pkl.load(f_in)
+            idx = list(set(y.nonzero()[0]))
+            y = y[idx]
 
-    st = NaiveStratification(shuffle=True, split_size=0.8, batch_size=500, num_jobs=10)
-    training_idx, test_idx = st.fit(y=y)
-    # training_idx, dev_idx = st.fit(y=y[training_idx])
+        st = NaiveStratification(shuffle=True, split_size=split_size, batch_size=500, num_jobs=num_jobs)
+        training_idx, test_idx = st.fit(y=y)
 
-    print("\n{0}".format(60 * "-"))
-    data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1,
-                    display_full_properties=True, data_name="medical",
-                    selected_name="training set", file_name="naive2split_train",
-                    rspath=RESULT_PATH)
-    data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=1,
-                    display_full_properties=False, data_name="medical",
-                    selected_name="test set", file_name="naive2split_test",
-                    rspath=RESULT_PATH)
-    # data_properties(y=y.toarray(), selected_examples=dev_idx, num_tails=2,
-    #                 display_full_properties=False, data_name="medical",
-    #                 selected_name="dev set", file_name="naive2split_dev",
-    #                 rspath=RESULT_PATH)
+        data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1, display_full_properties=True,
+                        dataset_name=dsname, model_name=model_name, split_set_name="training",
+                        rspath=RESULT_PATH)
+        data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=1, display_full_properties=False,
+                        dataset_name=dsname, model_name=model_name, split_set_name="test", rspath=RESULT_PATH,
+                        mode="a")
+        print("\n{0}\n".format(60 * "-"))

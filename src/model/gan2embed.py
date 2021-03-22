@@ -20,8 +20,8 @@ import tqdm
 from joblib import Parallel, delayed
 from tensorflow.keras import layers
 
-from src.utility.file_path import DATASET_PATH, LOG_PATH, RESULT_PATH
-from src.utility.utils import check_type, softmax
+from src.model.utils import DATASET_PATH, LOG_PATH, RESULT_PATH
+from src.model.utils import check_type, softmax
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
@@ -34,7 +34,7 @@ class GAN2Embed(object):
     def __init__(self, dimension_size: int = 50, num_examples2gen=20, update_ratio=1, window_size=2,
                  shuffle: bool = True, batch_size: int = 100, num_epochs: int = 5, max_iter_gen=30,
                  max_iter_dis=30, lambda_gen=1e-5, lambda_dis=1e-5, lr: float = 1e-3,
-                 display_interval: int = 30, num_jobs: int = 2, verbose: bool = True):
+                 display_interval: int = 5, num_jobs: int = 2, verbose: bool = True):
 
         """Clustering based stratified based multi-label data splitting.
 
@@ -82,7 +82,7 @@ class GAN2Embed(object):
         lr : float, default=0.0001
             Learning rate.
 
-        display_interval : int, default=30
+        display_interval : int, default=5
             Sample new nodes for the discriminator for every display
             interval iterations.
 
@@ -141,7 +141,7 @@ class GAN2Embed(object):
         self.lr = lr
 
         if display_interval <= 0:
-            display_interval = 30
+            display_interval = 5
         self.display_interval = display_interval
 
         if num_jobs <= 0:
@@ -161,7 +161,7 @@ class GAN2Embed(object):
         argdict.update({'dimension_size': 'The dimension size of embeddings: {0}'.format(self.dimension_size)})
         argdict.update(
             {'num_examples2gen': 'The number of samples for the generator.: {0}'.format(self.num_examples2gen)})
-        argdict.update({'update_ratio': 'Updating ratio when choose the trees: {0}'.format(self.display_interval)})
+        argdict.update({'update_ratio': 'Updating ratio when choose the trees: {0}'.format(self.update_ratio)})
         argdict.update({'window_size': 'Window size to skip.: {0}'.format(self.window_size)})
         argdict.update({'shuffle': 'Shuffle the dataset? {0}'.format(self.shuffle)})
         argdict.update({'batch_size': 'Number of examples to use in '
@@ -175,7 +175,7 @@ class GAN2Embed(object):
             {'lambda_dis': 'The l2 loss regulation weight for the discriminator: {0}'.format(self.lambda_dis)})
         argdict.update({'lr': 'Learning rate: {0}'.format(self.lr)})
         argdict.update({
-            'display_interval': 'Sample new nodes for the discriminator for every dis_interval iterations: {0}'.format(
+            'display_interval': 'Sample new nodes for the discriminator for every display_interval iterations: {0}'.format(
                 self.display_interval)})
         argdict.update({'num_jobs': 'Number of parallel workers: {0}'.format(self.num_jobs)})
 

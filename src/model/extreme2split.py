@@ -13,8 +13,8 @@ import warnings
 
 import numpy as np
 
-from src.utility.file_path import DATASET_PATH, RESULT_PATH
-from src.utility.utils import check_type, custom_shuffle, data_properties, LabelBinarizer
+from src.model.utils import DATASET_PATH, RESULT_PATH,DATASET
+from src.model.utils import check_type, custom_shuffle, data_properties, LabelBinarizer
 
 random.seed(12345)
 
@@ -342,36 +342,33 @@ class ExtremeStratification(object):
 
 
 if __name__ == "__main__":
-    X_name = "medical_X.pkl"
-    y_name = "medical_y.pkl"
-    use_extreme = True
+    model_name = "extreme2split"
+    split_size = 0.80
+    num_epochs = 5
 
-    file_path = os.path.join(DATASET_PATH, y_name)
-    with open(file_path, mode="rb") as f_in:
-        y = pkl.load(f_in)
-        idx = list(set(y.nonzero()[0]))
-        y = y[idx]
+    for dsname in sorted(DATASET):
+        X_name = dsname + "_X.pkl"
+        y_name = dsname + "_y.pkl"
 
-    file_path = os.path.join(DATASET_PATH, X_name)
-    with open(file_path, mode="rb") as f_in:
-        X = pkl.load(f_in)
-        X = X[idx]
+        file_path = os.path.join(DATASET_PATH, y_name)
+        with open(file_path, mode="rb") as f_in:
+            y = pkl.load(f_in)
+            idx = list(set(y.nonzero()[0]))
+            y = y[idx]
 
-    st = ExtremeStratification(swap_probability=0.1, threshold_proportion=0.1, decay=0.1,
-                               shuffle=True, split_size=0.75, num_epochs=50)
-    training_idx, test_idx = st.fit(X=X, y=y)
-    # training_idx, dev_idx = st.fit(X=X[training_idx], y=y[training_idx])
+        file_path = os.path.join(DATASET_PATH, X_name)
+        with open(file_path, mode="rb") as f_in:
+            X = pkl.load(f_in)
+            X = X[idx]
 
-    print("\n{0}".format(60 * "-"))
-    data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1,
-                    display_full_properties=True, data_name="medical",
-                    selected_name="training set", file_name="extreme2split_train",
-                    rspath=RESULT_PATH)
-    data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=1,
-                    display_full_properties=False, data_name="medical",
-                    selected_name="test set", file_name="extreme2split_test",
-                    rspath=RESULT_PATH)
-    # data_properties(y=y.toarray(), selected_examples=dev_idx, num_tails=2,
-    #                 display_full_properties=False, data_name="medical",
-    #                 selected_name="dev set", file_name="extreme2split_dev",
-    #                 rspath=RESULT_PATH)
+        st = ExtremeStratification(swap_probability=0.1, threshold_proportion=0.1, decay=0.1,
+                                   shuffle=True, split_size=split_size, num_epochs=num_epochs)
+        training_idx, test_idx = st.fit(X=X, y=y)
+
+        data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1, display_full_properties=True,
+                        dataset_name=dsname, model_name=model_name, split_set_name="training",
+                        rspath=RESULT_PATH)
+        data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=1, display_full_properties=False,
+                        dataset_name=dsname, model_name=model_name, split_set_name="test", rspath=RESULT_PATH,
+                        mode="a")
+        print("\n{0}\n".format(60 * "-"))

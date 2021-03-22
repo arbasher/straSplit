@@ -14,12 +14,12 @@ import numpy as np
 from scipy import linalg
 from scipy.cluster.vq import kmeans2
 
+from src.model.utils import normalize_laplacian
 from src.model.extreme2split import ExtremeStratification
 from src.model.iterative2split import IterativeStratification
 from src.model.naive2split import NaiveStratification
-from src.utility.file_path import DATASET_PATH, RESULT_PATH
-from src.utility.utils import check_type, data_properties, LabelBinarizer
-from src.utility.utils import normalize_laplacian
+from src.model.utils import DATASET_PATH, RESULT_PATH, DATASET
+from src.model.utils import check_type, data_properties, LabelBinarizer
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
@@ -241,37 +241,36 @@ class ClusteringEigenStratification(object):
 
 
 if __name__ == "__main__":
-    X_name = "medical_X.pkl"
-    y_name = "medical_y.pkl"
+    model_name = "eigencluster2split"
     split_type = "extreme"
+    split_size = 0.80
+    num_epochs = 5
+    num_jobs = 10
 
-    file_path = os.path.join(DATASET_PATH, y_name)
-    with open(file_path, mode="rb") as f_in:
-        y = pkl.load(f_in)
-        idx = list(set(y.nonzero()[0]))
-        y = y[idx]
+    for dsname in sorted(DATASET):
+        X_name = dsname + "_X.pkl"
+        y_name = dsname + "_y.pkl"
 
-    file_path = os.path.join(DATASET_PATH, X_name)
-    with open(file_path, mode="rb") as f_in:
-        X = pkl.load(f_in)
-        X = X[idx]
+        file_path = os.path.join(DATASET_PATH, y_name)
+        with open(file_path, mode="rb") as f_in:
+            y = pkl.load(f_in)
+            idx = list(set(y.nonzero()[0]))
+            y = y[idx]
 
-    st = ClusteringEigenStratification(num_subsamples=10000, num_clusters=5, sigma=2, swap_probability=0.1,
-                                       threshold_proportion=0.1, decay=0.1, shuffle=True, split_size=0.75,
-                                       batch_size=500, num_epochs=50, num_jobs=2)
-    training_idx, test_idx = st.fit(y=y, X=X, split_type=split_type)
-    # training_idx, dev_idx = st.fit(y=y[training_idx], X=X[training_idx], split_type=split_type)
+        file_path = os.path.join(DATASET_PATH, X_name)
+        with open(file_path, mode="rb") as f_in:
+            X = pkl.load(f_in)
+            X = X[idx]
 
-    print("\n{0}".format(60 * "-"))
-    data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=2,
-                    display_full_properties=True, data_name="medical",
-                    selected_name="training set", file_name="eigencluster2split_train",
-                    rspath=RESULT_PATH)
-    data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=2,
-                    display_full_properties=False, data_name="medical",
-                    selected_name="test set", file_name="eigencluster2split_test",
-                    rspath=RESULT_PATH)
-    # data_properties(y=y.toarray(), selected_examples=dev_idx, num_tails=2,
-    #                 display_full_properties=False, data_name="birds",
-    #                 selected_name="dev set", file_name="eigencluster2split_dev",
-    #                 rspath=RESULT_PATH)
+        st = ClusteringEigenStratification(num_subsamples=10000, num_clusters=5, sigma=2, swap_probability=0.1,
+                                           threshold_proportion=0.1, decay=0.1, shuffle=True, split_size=split_size,
+                                           batch_size=500, num_epochs=num_epochs, num_jobs=num_jobs)
+        training_idx, test_idx = st.fit(y=y, X=X, split_type=split_type)
+
+        data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1, display_full_properties=True,
+                        dataset_name=dsname, model_name=model_name, split_set_name="training",
+                        rspath=RESULT_PATH)
+        data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=1, display_full_properties=False,
+                        dataset_name=dsname, model_name=model_name, split_set_name="test", rspath=RESULT_PATH,
+                        mode="a")
+        print("\n{0}\n".format(60 * "-"))

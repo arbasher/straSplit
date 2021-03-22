@@ -13,8 +13,8 @@ import warnings
 
 import numpy as np
 
-from src.utility.file_path import DATASET_PATH, RESULT_PATH
-from src.utility.utils import check_type, custom_shuffle, data_properties, LabelBinarizer
+from src.model.utils import DATASET_PATH, RESULT_PATH, DATASET
+from src.model.utils import check_type, custom_shuffle, data_properties, LabelBinarizer
 
 random.seed(12345)
 
@@ -107,7 +107,7 @@ class IterativeStratification(object):
         # check whether data is singly labeled
         if num_labels == 1:
             # transform it to multi-label data
-            classes = list(set([i[0] if i else 0 for i in X.data]))
+            classes = list(set([i[0] if i else 0 for i in y.data]))
             mlb = LabelBinarizer(labels=classes)
             y = mlb.transform(y)
 
@@ -163,28 +163,24 @@ class IterativeStratification(object):
 
 
 if __name__ == "__main__":
-    y_name = "medical_y.pkl"
+    model_name = "iterative2split"
+    split_size = 0.80
 
-    file_path = os.path.join(DATASET_PATH, y_name)
-    with open(file_path, mode="rb") as f_in:
-        y = pkl.load(f_in)
-        idx = list(set(y.nonzero()[0]))
-        y = y[idx]
+    for dsname in sorted(DATASET):
+        y_name = dsname + "_y.pkl"
+        file_path = os.path.join(DATASET_PATH, y_name)
+        with open(file_path, mode="rb") as f_in:
+            y = pkl.load(f_in)
+            idx = list(set(y.nonzero()[0]))
+            y = y[idx]
 
-    st = IterativeStratification(shuffle=True, split_size=0.75)
-    training_idx, test_idx = st.fit(y=y)
-    # training_idx, dev_idx = st.fit(y=y[training_idx])
+        st = IterativeStratification(shuffle=True, split_size=split_size)
+        training_idx, test_idx = st.fit(y=y)
 
-    print("\n{0}".format(60 * "-"))
-    data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1,
-                    display_full_properties=True, data_name="medical",
-                    selected_name="training set", file_name="iterative2split_train",
-                    rspath=RESULT_PATH)
-    data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=1,
-                    display_full_properties=False, data_name="medical",
-                    selected_name="test set", file_name="iterative2split_test",
-                    rspath=RESULT_PATH)
-    # data_properties(y=y.toarray(), selected_examples=dev_idx, num_tails=2,
-    #                 display_full_properties=False, data_name="medical",
-    #                 selected_name="dev set", file_name="iterative2split_dev",
-    #                 rspath=RESULT_PATH)
+        data_properties(y=y.toarray(), selected_examples=training_idx, num_tails=1, display_full_properties=True,
+                        dataset_name=dsname, model_name=model_name, split_set_name="training",
+                        rspath=RESULT_PATH)
+        data_properties(y=y.toarray(), selected_examples=test_idx, num_tails=1, display_full_properties=False,
+                        dataset_name=dsname, model_name=model_name, split_set_name="test", rspath=RESULT_PATH,
+                        mode="a")
+        print("\n{0}\n".format(60 * "-"))
