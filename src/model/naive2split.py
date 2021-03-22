@@ -13,8 +13,8 @@ import warnings
 import numpy as np
 from joblib import Parallel, delayed
 
-from src.model.utils import DATASET_PATH, RESULT_PATH, DATASET
-from src.model.utils import check_type, data_properties, LabelBinarizer
+from utils import DATASET_PATH, RESULT_PATH, DATASET
+from utils import check_type, data_properties, LabelBinarizer
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')

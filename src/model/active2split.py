@@ -15,10 +15,10 @@ from joblib import Parallel, delayed
 from scipy.special import expit
 from sklearn.linear_model import SGDClassifier
 
-from src.model.utils import custom_shuffle
-from src.model.extreme2split import ExtremeStratification
-from src.model.utils import DATASET_PATH, RESULT_PATH, DATASET
-from src.model.utils import check_type, data_properties, LabelBinarizer
+from utils import custom_shuffle
+from extreme2split import ExtremeStratification
+from utils import DATASET_PATH, RESULT_PATH, DATASET
+from utils import check_type, data_properties, LabelBinarizer
 
 EPSILON = np.finfo(np.float).eps
 UPPER_BOUND = np.log(sys.float_info.max) * 10

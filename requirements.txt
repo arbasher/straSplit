@@ -2,9 +2,11 @@ numpy
 scikit-learn
 scipy
 sklearn
+networkx
 altair
 textwrap
 joblib
 tensorflow
 tqdm
+pandas
 igraph

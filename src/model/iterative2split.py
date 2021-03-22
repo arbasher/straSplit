@@ -13,8 +13,8 @@ import warnings
 
 import numpy as np
 
-from src.model.utils import DATASET_PATH, RESULT_PATH, DATASET
-from src.model.utils import check_type, custom_shuffle, data_properties, LabelBinarizer
+from utils import DATASET_PATH, RESULT_PATH, DATASET
+from utils import check_type, custom_shuffle, data_properties, LabelBinarizer
 
 random.seed(12345)
 

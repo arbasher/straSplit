@@ -20,8 +20,8 @@ import tqdm
 from joblib import Parallel, delayed
 from tensorflow.keras import layers
 
-from src.model.utils import DATASET_PATH, LOG_PATH, RESULT_PATH
-from src.model.utils import check_type, softmax
+from utils import DATASET_PATH, LOG_PATH, RESULT_PATH
+from utils import check_type, softmax
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')

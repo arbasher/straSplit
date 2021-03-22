@@ -14,12 +14,12 @@ import numpy as np
 from scipy import linalg
 from scipy.cluster.vq import kmeans2
 
-from src.model.utils import normalize_laplacian
-from src.model.extreme2split import ExtremeStratification
-from src.model.iterative2split import IterativeStratification
-from src.model.naive2split import NaiveStratification
-from src.model.utils import DATASET_PATH, RESULT_PATH, DATASET
-from src.model.utils import check_type, data_properties, LabelBinarizer
+from utils import normalize_laplacian
+from extreme2split import ExtremeStratification
+from iterative2split import IterativeStratification
+from naive2split import NaiveStratification
+from utils import DATASET_PATH, RESULT_PATH, DATASET
+from utils import check_type, data_properties, LabelBinarizer
 
 np.random.seed(12345)
 np.seterr(divide='ignore', invalid='ignore')
