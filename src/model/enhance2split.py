@@ -299,7 +299,7 @@ if __name__ == "__main__":
             X = pkl.load(f_in)
             X = X[idx]
 
-        st = LabelEnhancementStratification(num_subsamples=10000, num_communities=10, sigma=2, alpha=0.2,
+        st = LabelEnhancementStratification(num_subsamples=10000, num_communities=5, sigma=2, alpha=0.2,
                                             swap_probability=0.1, threshold_proportion=0.1, decay=0.1, shuffle=True,
                                             split_size=split_size, batch_size=500, num_epochs=num_epochs,
                                             num_jobs=num_jobs)
