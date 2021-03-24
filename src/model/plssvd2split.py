@@ -17,7 +17,6 @@ from sklearn.cross_decomposition import PLSSVD
 from extreme2split import ExtremeStratification
 from iterative2split import IterativeStratification
 from naive2split import NaiveStratification
-from utils import DATASET_PATH, RESULT_PATH, DATASET
 from utils import check_type, data_properties, LabelBinarizer
 
 np.random.seed(12345)
@@ -275,6 +274,7 @@ class ClusterStratification(object):
 
 
 if __name__ == "__main__":
+    from utils import DATASET_PATH, RESULT_PATH, DATASET
     model_name = "plssvd2split"
     split_type = "extreme"
     split_size = 0.80

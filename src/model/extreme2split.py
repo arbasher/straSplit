@@ -13,7 +13,6 @@ import warnings
 
 import numpy as np
 
-from utils import DATASET_PATH, RESULT_PATH, DATASET
 from utils import check_type, custom_shuffle, data_properties, LabelBinarizer
 
 random.seed(12345)
@@ -342,6 +341,8 @@ class ExtremeStratification(object):
 
 
 if __name__ == "__main__":
+    from utils import DATASET_PATH, RESULT_PATH, DATASET
+
     model_name = "extreme2split"
     split_size = 0.80
     num_epochs = 5

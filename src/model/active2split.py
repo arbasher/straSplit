@@ -494,7 +494,10 @@ class ActiveStratification(object):
 
     def __cost(self, X, y, label_idx):
         desc = '\t\t\t--> Calculating cost: {0:.2f}%...'.format((((label_idx + 1) / self.num_labels) * 100))
-        print(desc, end="\r")
+        if label_idx + 1 == self.num_labels:
+            print(desc)
+        else:
+            print(desc, end="\r")
         coef_intercept = self.coef[label_idx]
         coef_intercept = np.hstack((self.intercept[label_idx], coef_intercept))
         cond = -(2 * y[:, label_idx] - 1)

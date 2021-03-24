@@ -13,7 +13,6 @@ import warnings
 
 import numpy as np
 
-from utils import DATASET_PATH, RESULT_PATH, DATASET
 from utils import check_type, custom_shuffle, data_properties, LabelBinarizer
 
 random.seed(12345)
@@ -163,6 +162,8 @@ class IterativeStratification(object):
 
 
 if __name__ == "__main__":
+    from utils import DATASET_PATH, RESULT_PATH, DATASET
+
     model_name = "iterative2split"
     split_size = 0.80
 

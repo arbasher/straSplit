@@ -13,7 +13,6 @@ import warnings
 import numpy as np
 from joblib import Parallel, delayed
 
-from utils import DATASET_PATH, RESULT_PATH, DATASET
 from utils import check_type, data_properties, LabelBinarizer
 
 np.random.seed(12345)
@@ -189,6 +188,7 @@ class NaiveStratification(object):
 
 
 if __name__ == "__main__":
+    from utils import DATASET_PATH, RESULT_PATH, DATASET
     model_name = "naive2split"
     split_size = 0.80
     num_jobs = 10
@@ -204,6 +204,6 @@ if __name__ == "__main__":
         st = NaiveStratification(shuffle=True, split_size=split_size, batch_size=500, num_jobs=num_jobs)
         training_idx, test_idx = st.fit(y=y)
 
-        data_properties(y=y.toarray(), selected_examples=[training_idx, test_idx], num_tails=5, dataset_name=dsname,
+        data_properties(y=y, selected_examples=[training_idx, test_idx], num_tails=5, dataset_name=dsname,
                         model_name=model_name, rspath=RESULT_PATH, display_dataframe=False)
         print("\n{0}\n".format(60 * "-"))

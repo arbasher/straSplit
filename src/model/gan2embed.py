@@ -329,8 +329,8 @@ class GAN2Embed(object):
                     0]  # select next node
                 paths[n].append(next_node)
                 if next_node == previous_node:
-                    # TODO: this has negative consequences where nodes with
-                    #  not satisfying this condition may be eliminated to
+                    # TODO: this has negative consequences when nodes do
+                    #  not meet this condition they may not be used to
                     #  contructing samples
                     examples.append(current_node)
                     break

@@ -24,7 +24,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 from extreme2split import ExtremeStratification
 from iterative2split import IterativeStratification
 from naive2split import NaiveStratification
-from utils import DATASET_PATH, RESULT_PATH, DATASET
 from utils import check_type, data_properties, LabelBinarizer
 from utils import custom_shuffle
 from utils import normalize_laplacian
@@ -278,6 +277,8 @@ class LabelEnhancementStratification(object):
 
 
 if __name__ == "__main__":
+    from utils import DATASET_PATH, RESULT_PATH, DATASET
+
     model_name = "enhance2split"
     split_type = "extreme"
     split_size = 0.80

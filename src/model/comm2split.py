@@ -18,7 +18,6 @@ from scipy.sparse import triu
 from extreme2split import ExtremeStratification
 from iterative2split import IterativeStratification
 from naive2split import NaiveStratification
-from utils import DATASET_PATH, RESULT_PATH, DATASET
 from utils import check_type, data_properties, LabelBinarizer
 from utils import normalize_laplacian
 
@@ -248,6 +247,8 @@ class CommunityStratification(object):
 
 
 if __name__ == "__main__":
+    from utils import DATASET_PATH, RESULT_PATH, DATASET
+
     model_name = "comm2split"
     split_type = "extreme"
     split_size = 0.80
