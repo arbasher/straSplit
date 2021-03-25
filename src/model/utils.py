@@ -101,8 +101,12 @@ def data_properties(y, selected_examples, num_tails: int = 2, dataset_name="test
                     rspath: str = ".", display_dataframe: bool = False, display_figure: bool = False):
     save_name = model_name.lower() + "_" + dataset_name.lower()
     args_list = []
-    hold_list = [['Number of examples', 'Number of labels', 'Label cardinality', 'Label density',
-                  'Distinct labels', 'Distinct label sets', 'Frequency of distinct label sets',
+    hold_list = [['Number of examples', 'Number of labels', 'Label cardinality',
+                  'Label density', 'Distinct labels', 'Distinct label sets',
+                  'Frequency of distinct label sets',
+                  'Mean imbalance ratio intra-class for all labels',
+                  'Mean imbalance ratio inter-class for all labels',
+                  'Mean imbalance ratio labelsets for all labels',
                   'Labels having less than or equal to {0} examples'.format(num_tails),
                   'Labels having more than {0} examples'.format(num_tails + 1),
                   'KL difference between complete and data partition']]
@@ -112,8 +116,11 @@ def data_properties(y, selected_examples, num_tails: int = 2, dataset_name="test
     LCard_S = cardinality(y)
     LDen_S = density(y)
     DL_S = distinct_labels(y)
-    DLS_S = distinct_labelset(y)
+    DLS_S = distinct_labelsets(y)
     PDL_S = propportion_distinct_labelsets(y)
+    IR_intra = mean_ir_intra_class(y)
+    IR_inter = mean_ir_inter_class(y)
+    IR_labelset = mean_ir_labelset(y)
 
     # 1.1. Compute tail labels properties for the complete data
     tail = np.sum(y.toarray(), axis=0)
@@ -133,9 +140,14 @@ def data_properties(y, selected_examples, num_tails: int = 2, dataset_name="test
     args_list.append('\t>> Distinct labels: {0}'.format(DL_S))
     args_list.append('\t>> Distinct label sets: {0}'.format(DLS_S))
     args_list.append('\t>> Frequency of distinct label sets: {0:.6f}'.format(PDL_S))
+    args_list.append('\t>> Mean imbalance ratio intra-class for all labels: {0:.6f}'.format(IR_intra))
+    args_list.append('\t>> Mean imbalance ratio inter-class for all labels: {0:.6f}'.format(IR_inter))
+    args_list.append('\t>> Mean imbalance ratio labelsets for all labels: {0:.6f}'.format(IR_labelset))
     args_list.append('\t>> Labels having less than or equal to {0} examples: {1}'.format(num_tails, tail_sum))
     args_list.append('\t>> Labels having more than {0} examples: {1}'.format(num_tails + 1, tail_count))
-    hold_list.append([y.shape[0], L_S, LCard_S, LDen_S, DL_S, DLS_S, PDL_S, tail_sum, tail_count, 0])
+
+    hold_list.append([y.shape[0], L_S, LCard_S, LDen_S, DL_S, DLS_S, PDL_S, IR_intra,
+                      IR_inter, IR_labelset, tail_sum, tail_count, 0])
 
     # 2. Compute properties of complete data
     distr_y = np.sum(y.toarray(), axis=0)
@@ -160,8 +172,11 @@ def data_properties(y, selected_examples, num_tails: int = 2, dataset_name="test
         LCard_S_selected = cardinality(y_tmp)
         LDen_S_selected = density(y_tmp)
         DL_S_selected = distinct_labels(y_tmp)
-        DLS_S_selected = distinct_labelset(y_tmp)
+        DLS_S_selected = distinct_labelsets(y_tmp)
         PDL_S_selected = propportion_distinct_labelsets(y)
+        IR_intra_selected = mean_ir_intra_class(y_tmp)
+        IR_inter_selected = mean_ir_inter_class(y_tmp)
+        IR_labelset_selected = mean_ir_labelset(y_tmp)
         kl = entropy(pk=distr_y_selected, qk=distr_y)
 
         # 3.1. Compute tail labels properties for the complete data
@@ -182,16 +197,20 @@ def data_properties(y, selected_examples, num_tails: int = 2, dataset_name="test
         args_list.append('\t>> Distinct labels: {0}'.format(DL_S_selected))
         args_list.append('\t>> Distinct label sets: {0}'.format(DLS_S_selected))
         args_list.append('\t>> Frequency of distinct label set: {0:.6f}'.format(PDL_S_selected))
+        args_list.append('\t>> Mean imbalance ratio intra-class for all labels: {0:.6f}'.format(IR_intra_selected))
+        args_list.append('\t>> Mean imbalance ratio inter-class for all labels: {0:.6f}'.format(IR_inter_selected))
+        args_list.append('\t>> Mean imbalance ratio labelsets for all labels: {0:.6f}'.format(IR_labelset_selected))
         args_list.append('\t>> Labels having less than or equal to {0} examples: {1}'.format(num_tails, temp_sum))
         args_list.append('\t>> Labels having more than {0} examples: {1}'.format(num_tails + 1, temp_count))
         args_list.append('\t>> KL difference between complete '
                          'and data partition: {0:.6f}'.format(kl))
         hold_list.append([y_tmp.shape[0], L_S_selected, LCard_S_selected, LDen_S_selected,
-                          DL_S_selected, DLS_S_selected, PDL_S_selected, temp_sum, temp_count, kl])
+                          DL_S_selected, DLS_S_selected, PDL_S_selected, IR_intra_selected,
+                          IR_inter_selected, IR_labelset_selected, temp_sum, temp_count, kl])
 
-        if not display_dataframe:
-            for args in args_list:
-                print(args)
+    if not display_dataframe:
+        for args in args_list:
+            print(args)
 
     # Plotting utilities
     df_comp = pd.DataFrame({"Label": np.arange(1, 1 + tail.shape[0]), "Complete": tail,

@@ -189,6 +189,7 @@ class NaiveStratification(object):
 
 if __name__ == "__main__":
     from utils import DATASET_PATH, RESULT_PATH, DATASET
+
     model_name = "naive2split"
     split_size = 0.80
     num_jobs = 10

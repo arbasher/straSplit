@@ -1,10 +1,11 @@
 import math
 import os
 import pickle as pkl
+from collections import Counter
 
 import numpy as np
 from scipy.sparse import lil_matrix
-from scipy.stats import chi2_contingency
+from scipy.stats import chi2_contingency, pearsonr, kurtosis, skew
 
 
 ###********************          Dimensionality metrics         ********************###
@@ -73,13 +74,16 @@ def distinct_labels(y):
     return lil_matrix(y.sum(0)).nnz
 
 
-def distinct_labelset(y, labels: bool = False):
+def distinct_labelsets(y, return_labels: bool = False):
     '''
     This metric indicates the number of distinct label set in a data.
 
     Parameters
     ----------
     y : {array-like, sparse matrix} of shape (n_instances, n_labels).
+
+    return_labels: a boolean variable indicating whether to return a
+    list of distinct labelsets or not.
 
     Returns
     -------
@@ -92,7 +96,7 @@ def distinct_labelset(y, labels: bool = False):
         if temp in distinct:
             continue
         distinct.extend([temp])
-    if labels:
+    if return_labels:
         return distinct
     else:
         return len(distinct)
@@ -172,7 +176,7 @@ def density(y):
     return dens
 
 
-def frequency(y, l):
+def frequency(y, l: int):
     '''
     This metric is defined as the number of appearances of this
     label divided by the total number of instances.
@@ -219,7 +223,46 @@ def std_label_cardinality(y):
     return std_card
 
 
-def custom_entropy(y):
+def custom_entropy(dist):
+    '''
+    This metrics returns the entropy of a distribution.
+
+    Parameters
+    ----------
+    dist : a distribution.
+
+    Returns
+    -------
+    A numerical value corresponding the entropy of the distribution.
+    '''
+
+    p = dist / np.sum(dist, axis=0)
+    pc = np.clip(p, 1e-15, 1)
+    H = np.sum(np.sum(-p * np.log(pc), axis=0) * np.sum(dist, axis=0) / np.sum(dist))
+    return H
+
+
+def entropy_(X):
+    '''
+    This metric calculates the entropy of a nominal attribute or a label.
+
+    Parameters
+    ----------
+    X : {array-like, sparse matrix} of shape (n_samples, n_features
+        or n_labels).
+
+    Returns
+    -------
+    A numerical value indicating the mean entropy.
+    '''
+
+    dist = Counter([int(item) for item in X])
+    dist = np.array([v for k, v in dist.items()])
+    H = custom_entropy(dist=dist)
+    return H
+
+
+def min_max_mean_entropy_labels(y):
     '''
     This metrics returns the minimum, maximum and mean of entropies of
     labels.
@@ -235,19 +278,18 @@ def custom_entropy(y):
 
     H = []
     for l in range(labels(y)):
-        freq = frequency(y=y, l=y)
-        temp = -(freq * math.log(freq) + ((1 - freq) * math.log(1 - freq)))
+        temp = entropy_(y[:, l].toarray().astype(int))
         H.append((l, temp))
     H = sorted(H, key=lambda x: x[1])
     min_entropy = H[0][0]
-    max_entropy = H[::-1][0]
+    max_entropy = H[::-1][0][0]
     mean_entropy = sum([item[1] for item in H]) / len(H)
     return min_entropy, max_entropy, mean_entropy
 
 
 ###********************             Imbalance metrics           ********************###
 
-def imbalance_ratio_inter_class(y, l):
+def imbalance_ratio_inter_class(y, l: int):
     '''
     This imbalance ratio inter-class metric is obtained by dividing the
     number of positive examples of most frequent label by the number of
@@ -331,7 +373,7 @@ def cvir_inter_class(y):
     return cvir_ir
 
 
-def imbalance_ratio_intra_class(y, l):
+def imbalance_ratio_intra_class(y, l: int):
     '''
     This imbalance ratio intra-class metric measures the degree of
     imbalance inside a label.
@@ -393,7 +435,7 @@ def max_ir_intra_class(y):
     return max_ir
 
 
-def std_ir_intra_class(y, l):
+def std_ir_intra_class(y, l: list):
     '''
     This metric computes the standard deviations intra-class of a label.
 
@@ -435,7 +477,7 @@ def mean_std_ir_intra_class(y):
     return mean_std
 
 
-def imbalance_ratio_labelset(l, dl, calc_dl: bool = True):
+def imbalance_ratio_labelset(l: int, dl: list, calc_dl: bool = True):
     '''
     This metric is calculated by dividing the number of instances associated
     with the most frequent labelsets by the number of instances of the current
@@ -452,7 +494,7 @@ def imbalance_ratio_labelset(l, dl, calc_dl: bool = True):
     A numerical value representing the imbalance ratio label set of a label.
     '''
     if calc_dl:
-        dl = distinct_labelset(y, labels=True)
+        dl = distinct_labelsets(y, return_labels=True)
         dl = [y[:, item].sum() / labels(y) for idx, item in enumerate(dl)]
 
     max_freq = max(dl)
@@ -476,7 +518,7 @@ def mean_ir_labelset(y):
     A numerical value representing the mean imbalance ratio labelsets for
     all labels.
     '''
-    dl = distinct_labelset(y, labels=True)
+    dl = distinct_labelsets(y, return_labels=True)
     dl = [y[:, item].sum() / labels(y) for idx, item in enumerate(dl)]
     mean_ir = sum([imbalance_ratio_labelset(l=l, dl=dl, calc_dl=False) for l in range(len(dl))])
     mean_ir /= len(dl)
@@ -497,7 +539,7 @@ def max_ir_labelset(y):
     all labels.
     '''
 
-    dl = distinct_labelset(y, labels=True)
+    dl = distinct_labelsets(y, return_labels=True)
     dl = [y[:, item].sum() / labels(y) for idx, item in enumerate(dl)]
     max_ir = max(dl)
     max_ir = dl.index(max_ir)
@@ -568,7 +610,7 @@ def pmax(y):
     combination value.
     '''
 
-    dl = distinct_labelset(y, labels=True)
+    dl = distinct_labelsets(y, return_labels=True)
     n = instances(y)
     dl = [y[:, item].sum() / n for idx, item in enumerate(dl)]
     max_ir = max(dl)
@@ -609,7 +651,7 @@ def diversity(y):
     A numerical value representing the diversity.
     '''
 
-    dl = distinct_labelset(y)
+    dl = distinct_labelsets(y)
     bnd = bound(y)
     return dl / bnd
 
@@ -657,11 +699,11 @@ def propportion_distinct_labelsets(y):
     A numerical value representing the proportion of distinct labelsets.
     '''
 
-    pdl = distinct_labelset(y) / y.shape[0]
+    pdl = distinct_labelsets(y) / y.shape[0]
     return pdl
 
 
-def number_labelsets_to_n_instances(y, n):
+def number_labelsets_to_n_instances(y, n: int):
     '''
     This metric returns the number of labelsets appearing the up to n
     times in the dataset.
@@ -677,12 +719,12 @@ def number_labelsets_to_n_instances(y, n):
     An integer value indicating the the number of labelsets .
     '''
 
-    dl = distinct_labelset(y, labels=True)
+    dl = distinct_labelsets(y, return_labels=True)
     num_labelsets = [l for l in dl if y[:, l].sum() <= n]
     return len(num_labelsets)
 
 
-def ratio_labelsets_to_n_instances(y, n):
+def ratio_labelsets_to_n_instances(y, n: int):
     '''
     This metric returns the ratio of labelsets appearing the up to n
     times in the dataset.
@@ -698,7 +740,7 @@ def ratio_labelsets_to_n_instances(y, n):
     A numerical value indicating the ratio of labelsets.
     '''
 
-    dl = distinct_labelset(y, labels=True)
+    dl = distinct_labelsets(y, return_labels=True)
     num_labelsets = [l for l in dl if y[:, l].sum() <= n]
     return len(num_labelsets) / len(dl)
 
@@ -717,7 +759,7 @@ def average_instances_per_labelset(y):
     A numerical value indicating the average number of instances.
     '''
 
-    dl = distinct_labelset(y, labels=True)
+    dl = distinct_labelsets(y, return_labels=True)
     return instances(y) / len(dl)
 
 
@@ -734,7 +776,7 @@ def std_instances_per_labelset(y):
     -------
     A numerical value representing the standard deviation.
     '''
-    dl = distinct_labelset(y, labels=True)
+    dl = distinct_labelsets(y, return_labels=True)
     average_labelsets = average_instances_per_labelset(y=y)
     std_labelsets = sum([(y[:, item].sum() - average_labelsets) ** 2 for item in dl]) / len(dl)
     std_labelsets = math.sqrt(std_labelsets)
@@ -755,7 +797,7 @@ def number_unique_labelsets(y):
     An integer value indicating the number of unique labelsets .
     '''
 
-    dl = distinct_labelset(y, labels=True)
+    dl = distinct_labelsets(y, return_labels=True)
     num_labelsets = [l for l in dl if y[:, l].sum() == 1]
     return len(num_labelsets)
 
@@ -776,7 +818,7 @@ def ratio_labelsets_half_attributes(X, y):
     A numerical value indicating the ratio of labelsets.
     '''
 
-    dl = distinct_labelset(y, labels=True)
+    dl = distinct_labelsets(y, return_labels=True)
     half_attributes = attributes(X) / 2
     ratio_labelsets = len([l for l in dl if y[:, l].sum() <= half_attributes]) / len(dl)
     return ratio_labelsets
@@ -887,7 +929,7 @@ def number_nominal_attributes(X):
     '''
 
     num_attributes = attributes(X)
-    nominal_attributes = [idx for idx in range(num_attributes) if X[:, idx].toarray().dtype.name == 'int64']
+    nominal_attributes = [idx for idx in range(num_attributes) if X[:, idx].toarray().dtype == int]
     return len(nominal_attributes)
 
 
@@ -905,11 +947,11 @@ def number_numeric_attributes(X):
     '''
 
     num_attributes = attributes(X)
-    numeric_attributes = [idx for idx in range(num_attributes) if X[:, idx].toarray().dtype.name == 'float64']
+    numeric_attributes = [idx for idx in range(num_attributes) if X[:, idx].toarray().dtype == float]
     return len(numeric_attributes)
 
 
-def proposition_binary_attributes(X):
+def proportion_binary_attributes(X):
     '''
     This metric calculates the proposition of binary attributes of a dataset.
 
@@ -928,7 +970,7 @@ def proposition_binary_attributes(X):
     return len(binary_attributes) / num_attributes
 
 
-def proposition_nominal_attributes(X):
+def proportion_nominal_attributes(X):
     '''
     This metric calculates the proposition of nominal attributes of a dataset.
 
@@ -942,11 +984,11 @@ def proposition_nominal_attributes(X):
     '''
 
     num_attributes = attributes(X)
-    nominal_attributes = [idx for idx in range(num_attributes) if X[:, idx].toarray().dtype.name == 'int64']
+    nominal_attributes = [idx for idx in range(num_attributes) if sum(X[:, idx].toarray().astype(int)) != 0]
     return len(nominal_attributes) / num_attributes
 
 
-def proposition_numeric_attributes(X):
+def proportion_numeric_attributes(X):
     '''
     This metric calculates the proposition of numeric attributes of a dataset.
 
@@ -960,14 +1002,206 @@ def proposition_numeric_attributes(X):
     '''
 
     num_attributes = attributes(X)
-    numeric_attributes = [idx for idx in range(num_attributes) if X[:, idx].toarray().dtype.name == 'float64']
+    numeric_attributes = [idx for idx in range(num_attributes) if X[:, idx].toarray().dtype == float]
     return len(numeric_attributes) / num_attributes
+
+
+def mean_entropies_nominal_attributes(X, t: int):
+    '''
+    This metric calculates the entropy of each nominal attribute.
+
+    Parameters
+    ----------
+    X : {array-like, sparse matrix} of shape (n_samples, n_features).
+
+    t : an integer representing the index of the attribute.
+
+    Returns
+    -------
+    A numerical value indicating the mean entropy.
+    '''
+
+    num_instances = instances(X)
+    H = entropy_(X[:, t].toarray().astype(int)) / num_instances
+    return H
+
+
+def mean_mean_numeric_attributes(X):
+    '''
+    This metric calculates the mean of means of all numeric attributes.
+
+    Parameters
+    ----------
+    X : {array-like, sparse matrix} of shape (n_samples, n_features).
+
+    Returns
+    -------
+    A numerical value indicating the mean-mean numeric attributes.
+    '''
+
+    num_instances = instances(X)
+    num_attributes = attributes(X)
+    mean_mean_numeric = [X[:, idx].sum() / num_instances for idx in range(num_attributes) if
+                         X[:, idx].toarray().dtype == float]
+    mean_mean_numeric = sum(mean_mean_numeric) / num_instances
+    return mean_mean_numeric
+
+
+def mean_std_numeric_attributes(X):
+    '''
+    This metric calculates the average of standard deviations of all
+    numeric attributes.
+
+    Parameters
+    ----------
+    X : {array-like, sparse matrix} of shape (n_samples, n_features).
+
+    Returns
+    -------
+    A numerical value indicating the average of standard deviations
+    numeric attributes.
+    '''
+
+    num_instances = instances(X)
+    num_attributes = attributes(X)
+    mean_numeric = [X[:, idx].sum() / num_instances for idx in range(num_attributes) if
+                    X[:, idx].toarray().dtype == float]
+    std_numeric = [math.sqrt(sum((X[:, 0].toarray() - mean_numeric[0]) ** 2) / (num_instances - 1)) for idx in
+                   range(num_attributes) if X[:, idx].toarray().dtype == float]
+    std_numeric = sum(std_numeric) / num_instances
+    return std_numeric
+
+
+def gain_ratio(X, y, l: int, t: int):
+    '''
+    This metric calculates the gain ratio.
+
+    Parameters
+    ----------
+    X : {array-like, sparse matrix} of shape (n_samples, n_features).
+
+    y : {array-like, sparse matrix} of shape (n_samples, n_labels).
+
+    l : an integer representing the index of a label.
+
+    t : an integer representing the index of a attribute.
+
+    Returns
+    -------
+    A numerical value indicating the gain ratio.
+    '''
+
+    h_label = entropy_(y[:, l].toarray().astype(int))
+    h_attribute = entropy_(X[:, t].toarray().astype(int))
+    h_label_attribute = entropy_(np.compress(X[:, t].toarray().reshape((X.shape[0],)), a=y[:, l].toarray(), axis=0))
+    return (h_label - h_label_attribute) / h_attribute
+
+
+def average_gain_ratio(X, y):
+    '''
+    This metric calculates the average value of gain ratio values for
+    all attributes and each label.
+
+    Parameters
+    ----------
+    X : {array-like, sparse matrix} of shape (n_samples, n_features).
+
+    y : {array-like, sparse matrix} of shape (n_samples, n_labels).
+
+    Returns
+    -------
+    A numerical value indicating the average gain ratio.
+    '''
+
+    num_attributes = attributes(X)
+    num_labels = labels(y)
+    total_gain_ratio = 0.0
+    for l in range(num_labels):
+        for t in range(num_attributes):
+            total_gain_ratio += gain_ratio(X=X, y=y, l=l, t=t)
+    total_gain_ratio /= num_attributes
+    total_gain_ratio /= num_labels
+    return total_gain_ratio
+
+
+def average_absolute_correlation_numeric_attributes(X):
+    '''
+    This metric calculates the average of the correlation coefficient
+    among all pairs of numeric attributes.
+
+    Parameters
+    ----------
+    X : {array-like, sparse matrix} of shape (n_samples, n_features).
+
+
+    Returns
+    -------
+    A numerical value indicating the average of the correlation coefficient.
+    '''
+
+    num_instances = instances(X)
+    num_attributes = attributes(X)
+    mean_correlation = 0.0
+    for i in range(num_attributes):
+        for j in range(i + 1, num_attributes):
+            mean_correlation += \
+                pearsonr(x=X[:, i].toarray().reshape((num_instances,)), y=X[:, j].toarray().reshape((num_instances,)))[
+                    0]
+    temp = (num_attributes * (num_attributes - 1)) / 2
+    temp = math.pow(temp, -1)
+    mean_correlation *= temp
+    return mean_correlation
+
+
+def average_kurtosis_numeric_attributes(X):
+    '''
+    This metric calculates the Kurtosis for each numeric attribute
+    and then, it calculates the average.
+
+    Parameters
+    ----------
+    X : {array-like, sparse matrix} of shape (n_samples, n_features).
+
+
+    Returns
+    -------
+    A numerical value indicating the average of kurtosis for numeric attributes.
+    '''
+
+    num_attributes = attributes(X)
+    mean_kurtosis = 0.0
+    for i in range(num_attributes):
+        mean_kurtosis += kurtosis(X[:, i].toarray())[0]
+    mean_kurtosis /= num_attributes
+    return mean_kurtosis
+
+
+def average_skewness_numeric_attributes(X):
+    '''
+    This metric calculates calculates the mean of skewness of numeric attributes.
+
+    Parameters
+    ----------
+    X : {array-like, sparse matrix} of shape (n_samples, n_features).
+
+
+    Returns
+    -------
+    A numerical value indicating the average of skewness for numeric attributes.
+    '''
+
+    num_attributes = attributes(X)
+    mean_skewness = 0.0
+    for i in range(num_attributes):
+        mean_skewness += skew(X[:, i].toarray())[0]
+    mean_skewness /= num_attributes
+    return mean_skewness
 
 
 if __name__ == "__main__":
     from src.model.utils import DATASET_PATH
 
-    dsname = "bibtex"
+    dsname = "birds"
     X_name = dsname + "_X.pkl"
     y_name = dsname + "_y.pkl"
 
@@ -982,5 +1216,7 @@ if __name__ == "__main__":
         X = pkl.load(f_in)
         X = X[idx]
 
-    temp = cardinality(y)
+    temp = mean_ir_intra_class(y)
+    print(temp)
+    temp = mean_ir_inter_class(y)
     print(temp)

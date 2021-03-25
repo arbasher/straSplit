@@ -16,7 +16,6 @@ from scipy.special import expit
 from sklearn.linear_model import SGDClassifier
 
 from extreme2split import ExtremeStratification
-from utils import DATASET_PATH, RESULT_PATH, DATASET
 from utils import check_type, data_properties, LabelBinarizer
 from utils import custom_shuffle
 
@@ -642,6 +641,8 @@ class ActiveStratification(object):
 
 
 if __name__ == "__main__":
+    from utils import DATASET_PATH, RESULT_PATH, DATASET
+
     model_name = "active2split"
     split_type = "extreme"
     split_size = 0.80
@@ -672,6 +673,6 @@ if __name__ == "__main__":
                                   display_interval=1, num_jobs=num_jobs)
         training_idx, test_idx = st.fit(X=X, y=y)
 
-        data_properties(y=y.toarray(), selected_examples=[training_idx, test_idx], num_tails=5, dataset_name=dsname,
+        data_properties(y=y, selected_examples=[training_idx, test_idx], num_tails=5, dataset_name=dsname,
                         model_name=model_name, rspath=RESULT_PATH, display_dataframe=False)
         print("\n{0}\n".format(60 * "-"))

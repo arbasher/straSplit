@@ -275,6 +275,6 @@ if __name__ == "__main__":
                                      batch_size=500, num_epochs=num_epochs, num_jobs=num_jobs)
         training_idx, test_idx = st.fit(y=y, X=X, split_type=split_type)
 
-        data_properties(y=y.toarray(), selected_examples=[training_idx, test_idx], num_tails=5, dataset_name=dsname,
+        data_properties(y=y, selected_examples=[training_idx, test_idx], num_tails=5, dataset_name=dsname,
                         model_name=model_name, rspath=RESULT_PATH, display_dataframe=False)
         print("\n{0}\n".format(60 * "-"))
