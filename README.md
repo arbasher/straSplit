@@ -14,14 +14,6 @@ of class labels (e.g. pathways). leADS was evaluated on the pathway prediction t
 datasets, where the experiments revealed that leADS achieved very compelling and competitive performances against the
 state-of-the-art pathway inference algorithms.
 
-#### Relevant Publications
-
-medGAN implements the algorithm introduced in the following [paper](https://arxiv.org/abs/1703.06490):
-
-	Generating Multi-label Discrete Patient Records using Generative Adversarial Networks
-	Edward Choi, Siddharth Biswal, Bradley Malin, Jon Duke, Walter F. Stewart, Jimeng Sun  
-	Machine Learning for Healthcare (MLHC) 2017
-
 #### Code Description
 
 This code trains a generative adversarial network to generate patient records. This work currently can handle patient
@@ -58,3 +50,15 @@ This step describes how to train medGAN, with minimum number of steps using MIMI
 3. After the training, if you want to generate synthetic records, use this command :
    `python medgan.py <matrix file> <generated output path> --model_file=<trained output path> --generate_data=True`.
    Note that `<matrix file>` is not actually used for generating synthetic records, so it is just a dummy input.
+
+## Citing
+If you find *straSplit* useful in your research, please consider citing the following paper:
+- M. A. Basher, Abdur Rahman, McLaughlin, Ryan J., and Hallam, Steven J.. **["Metabolic pathway inference using multi-label classification with rich pathway features."](https://doi.org/10.1371/journal.pcbi.1008174)**, PLoS Comput Biol (2020).
+- M. A. Basher, Abdur Rahman and Hallam, Steven J.. **["Multi-label pathway prediction based on active dataset subsampling."](https://www.biorxiv.org/content/10.1101/2020.09.14.297424v1)**, bioRxiv (2020).
+- M. A. Basher, Abdur Rahman. **["Machine learning methods for metabolic pathway inference from genomic sequence information."](https://open.library.ubc.ca/cIRcle/collections/ubctheses/24/items/1.0394748)**, Doctoral dissertation, University of British Columbia, (2020).
+- Moyano, J.M., Gibaja, E.L. and Ventura, S.. **["MLDA: A tool for analyzing multi-label datasets."](https://www.sciencedirect.com/science/article/abs/pii/S0950705117300308)**, Knowledge-Based Systems (2017).
+- Merrillees, M. and Du, L.. **["Stratified sampling for extreme multi-label data."](https://arxiv.org/abs/2103.03494)**,  arXiv preprint (2021).
+- Sechidis, K., Tsoumakas, G. and Vlahavas, I.. **["On the stratification of multi-label data."](https://link.springer.com/chapter/10.1007/978-3-642-23808-6_10)**, In Joint European Conference on Machine Learning and Knowledge Discovery in Databases (pp. 145-158). Springer, Berlin, Heidelberg (2011).
+
+## Contact
+For any inquiries, please contact: [arbasher@student.ubc.ca](mailto:arbasher@student.ubc.ca)

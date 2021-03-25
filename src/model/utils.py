@@ -5,7 +5,7 @@ import pandas as pd
 from scipy.sparse import issparse, eye
 from scipy.stats import entropy
 
-from src.metrics.mlmetrics import *
+from mlmetrics import *
 
 ###********************    Path and datasets arguments    ********************###
 DIRECTORY_PATH = os.getcwd()

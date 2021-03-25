@@ -20,7 +20,6 @@ import tqdm
 from joblib import Parallel, delayed
 from tensorflow.keras import layers
 
-from utils import DATASET_PATH, LOG_PATH, RESULT_PATH
 from utils import check_type, softmax
 
 np.random.seed(12345)
@@ -516,6 +515,8 @@ class GAN2Embed(object):
 
 
 if __name__ == "__main__":
+    from utils import DATASET_PATH, LOG_PATH, RESULT_PATH
+    
     X_name = "Xbirds_train.pkl"
     y_name = "Ybirds_train.pkl"
     use_extreme = True
