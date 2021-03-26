@@ -26,7 +26,7 @@ Run the following commands to clone the repository to an appropriate location:
 
 ``git clone https://github.com/arbasher/straSplit``
 
-Please navigate to ``doc`` folder for tutorials.
+Please follow this [notebook](src/doc/split.ipynb) for tutorials.
 
 ## Citing
 
