@@ -1,6 +1,11 @@
 '''
-Stratified Sampling for extreme Multi-Label Data
-adapted from https://github.com/maxitron93/stratified_sampling_for_XML
+Stratified Sampling for extreme Multi-Label Data.
+
+1. Merrillees, M. and Du, L., 2021. Stratified
+Sampling for Extreme Multi-Label Data.
+arXiv preprint arXiv:2103.03494.
+
+Adapted from https://github.com/maxitron93/stratified_sampling_for_XML
 '''
 
 import os

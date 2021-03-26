@@ -3,6 +3,7 @@ The predictive uncertainty approach to group examples with
 high informativeness into training set using a calibrated
 stratified splitting an extreme multi-label dataset algorithm.
 '''
+
 import os
 import pickle as pkl
 import sys
@@ -332,8 +333,7 @@ class ActiveStratification(object):
                                                                   ((current_progress + count) / total_progress) * 100)
             if total_progress == current_progress + count:
                 print(desc)
-            else:
-                print(desc, end="\r")
+
             count += 1
             gradient = 0.0
 
@@ -495,8 +495,6 @@ class ActiveStratification(object):
         desc = '\t\t\t--> Calculating cost: {0:.2f}%...'.format((((label_idx + 1) / self.num_labels) * 100))
         if label_idx + 1 == self.num_labels:
             print(desc)
-#         else:
-#             print(desc, end="\r")
         coef_intercept = self.coef[label_idx]
         coef_intercept = np.hstack((self.intercept[label_idx], coef_intercept))
         cond = -(2 * y[:, label_idx] - 1)

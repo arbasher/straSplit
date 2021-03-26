@@ -1,6 +1,11 @@
 '''
-Iterative stratification for multi-mabel data adapted
-from https://bit.ly/2QqHd4V
+Iterative stratification for multi-mabel data.
+
+1. Sechidis, K., Tsoumakas, G. and Vlahavas, I., 2011,
+September. On the stratification of multi-label data.
+In Joint European Conference on Machine Learning and
+Knowledge Discovery in Databases (pp. 145-158).
+Springer, Berlin, Heidelberg.
 '''
 
 import os

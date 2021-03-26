@@ -112,7 +112,7 @@ def data_properties(y, selected_examples, num_tails: int = 2, dataset_name="test
                   'KL difference between complete and data partition']]
 
     # 1. Compute properties of complete data
-    L_S = int(np.sum(y))
+    L_S = total_labels(y)
     LCard_S = cardinality(y)
     LDen_S = density(y)
     DL_S = distinct_labels(y)
@@ -168,7 +168,7 @@ def data_properties(y, selected_examples, num_tails: int = 2, dataset_name="test
         distr_y_selected = distr_y_selected / np.sum(y.toarray())
         tail_selected_list.append(tail_selected)
 
-        L_S_selected = int(y_tmp.sum())
+        L_S_selected = total_labels(y_tmp)
         LCard_S_selected = cardinality(y_tmp)
         LDen_S_selected = density(y_tmp)
         DL_S_selected = distinct_labels(y_tmp)
@@ -217,9 +217,15 @@ def data_properties(y, selected_examples, num_tails: int = 2, dataset_name="test
                             "Train": tail_selected_list[0], "Test": tail_selected_list[1]})
     df_comp = df_comp.melt(['Label'], var_name='Dataset', value_name='Sum')
 
+    temp_text = "Number of examples for each label given {0} data.".format(dataset_name)
+    plot_title = alt.TitleParams(temp_text, subtitle=["The horizontal axis indicates the "
+                                                      "indices of labels while the vertical "
+                                                      "axis represents the number of associated "
+                                                      "examples"])
+
     # Bar plot
     alt.themes.enable('none')
-    chart = alt.Chart(df_comp).properties(width=600, height=350).mark_bar(color="grey").encode(
+    chart = alt.Chart(df_comp, title=plot_title).properties(width=600, height=350).mark_bar(color="grey").encode(
         x=alt.X('Label:O', title="Label ID", sort='ascending'),
         y=alt.Y('Sum:Q', title="Number of Examples", stack=None),
         color=alt.Color('Dataset:N', scale=alt.Scale(range=['red', 'black', 'blue'])),
@@ -238,12 +244,13 @@ def data_properties(y, selected_examples, num_tails: int = 2, dataset_name="test
         fillColor='white',
         padding=10,
         cornerRadius=10).resolve_scale(x='independent')
+
     # save
     chart.save(os.path.join(rspath, save_name + '.html'))
 
     df = pd.DataFrame(hold_list).T
     df.columns = ['Properties for {0}'.format(dataset_name), 'Complete set', 'Training set', 'Test set']
-    df.to_csv(path_or_buf=os.path.join(rspath, save_name + ".tsv"), sep='\t')
+    df.to_csv(path_or_buf=os.path.join(rspath, save_name + ".tsv"), sep='\t', index=False)
     if display_dataframe and display_figure:
         return df, chart
     elif display_dataframe and not display_figure:

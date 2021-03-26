@@ -1,3 +1,12 @@
+'''
+The metrics here are defined in the following paper:
+https://github.com/i02momuj/MLDA/blob/master/doc/MLDA_Doc.pdf
+
+1. Moyano, J.M., Gibaja, E.L. and Ventura, S., 2017.
+MLDA: A tool for analyzing multi-label datasets.
+Knowledge-Based Systems, 121, pp.1-3.
+'''
+
 import math
 import os
 import pickle as pkl
@@ -72,6 +81,21 @@ def distinct_labels(y):
     '''
 
     return lil_matrix(y.sum(0)).nnz
+
+
+def total_labels(y):
+    '''
+    This metric indicates the number of total labels in a data.
+
+    Parameters
+    ----------
+    y : {array-like, sparse matrix} of shape (n_instances, n_labels).
+
+    Returns
+    -------
+    An integer representing the number of labels.
+    '''
+    return int(y.sum())
 
 
 def distinct_labelsets(y, return_labels: bool = False):
@@ -154,7 +178,7 @@ def cardinality(y):
     '''
 
     temp = int(y.sum())
-    card = temp / y.shape[0]
+    card = temp / instances(y)
     return card
 
 
@@ -194,7 +218,7 @@ def frequency(y, l: int):
 
     temp = y[:, l]
     temp = int(temp.sum())
-    freq_l = temp / y.shape[0]
+    freq_l = temp / instances(y)
     return freq_l
 
 
@@ -218,7 +242,7 @@ def std_label_cardinality(y):
     std_card = 0
     for idx in range(instances(y)):
         std_card += (y[idx].nnz - card) ** 2
-    std_card /= y.shape[0]
+    std_card /= instances(y)
     std_card = math.sqrt(std_card)
     return std_card
 

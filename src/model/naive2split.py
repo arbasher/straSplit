@@ -1,5 +1,10 @@
 '''
-Naive online based stratified multi-label data splitting
+Naive online based stratified multi-label data splitting.
+
+1. MA Basher, A.R., McLaughlin, R.J. and Hallam, S.J., 2020.
+Metabolic pathway inference using multi-label classification
+with rich pathway features. PLoS computational biology,
+16(10), p.e1008174.
 '''
 
 import os
