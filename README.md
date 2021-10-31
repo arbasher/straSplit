@@ -1,8 +1,10 @@
+# Stratification of multi-label datasets
+
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/43b0e832cbf84e73895134016cd82ff7)](https://app.codacy.com/gh/arbasher/straSplit?utm_source=github.com&utm_medium=referral&utm_content=arbasher/straSplit&utm_campaign=Badge_Grade_Settings)
+
 ![Workflow](flowchart.png)
 
 ## Basic Description
-
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/43b0e832cbf84e73895134016cd82ff7)](https://app.codacy.com/gh/arbasher/straSplit?utm_source=github.com&utm_medium=referral&utm_content=arbasher/straSplit&utm_campaign=Badge_Grade_Settings)
 
 This repo contains an implementation of straSplit comprising 8 algorithms to split multi-label data into two sets: training and test.
 
